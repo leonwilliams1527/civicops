@@ -63,4 +63,70 @@ function Capital(){
  <div className="two section"><div className="card"><h2>Project Efficiency Ranking</h2>{ranked.map((p,i)=><div className="evidence" key={p.id}><div style={{display:'flex',gap:10,alignItems:'center'}}><div className="rank">{i+1}</div><div><b>{p.name}</b><div className="muted">{nf(p.tn)} lbs/yr · {money(p.cost)}</div></div></div><b>${nf(Math.round(p.cost/p.tn))}/lb</b></div>)}</div><div className="card"><h2>Decision Summary</h2><p><b>Selected portfolio:</b> {picks.length} projects</p><p><b>Modeled investment:</b> {money(cost)}</p><p><b>Modeled TN reduction:</b> {nf(tn)} lbs/yr</p><p><b>Remaining confirmed gap:</b> {nf(remain)} lbs/yr</p><p><b>Average efficiency:</b> {tn?'$'+nf(cpl)+'/lb':'—'}</p><div className="note">Scenario results are planning estimates using demonstration data. They are not official City budgets, engineering estimates, BMAP commitments, or DEP-approved nutrient credits.</div></div></div></>
 }
 function Placeholder(){return <><Head t="Reports & DEP Readiness" s="Development Phase 4"/><div className="card placeholder section"><h2>Phase 4</h2><p>Executive reporting, DEP readiness packages and audit exports will be activated next.</p></div></>}
-export default function Home(){const[v,setV]=useState('dashboard');const nav=[['dashboard','▣ Command Center'],['watersheds','⌖ Watersheds'],['obligations','◎ BMAP Obligations'],['projects','▤ Projects'],['credits','◉ Nutrient Credits'],['monitoring','⌁ Monitoring & Evidence'],['capital','◆ Capital Planning'],['reports','▧ Reports']];let c=v==='dashboard'?<Dash go={setV}/>:v==='watersheds'?<Waters/>:v==='obligations'?<Oblig/>:v==='projects'?<Projects/>:v==='credits'?<Credits/>:v==='monitoring'?<Monitoring/>:v==='capital'?<Capital/>:<Placeholder/>;return <div className="app"><aside className="side"><div className="brand">CivicOps</div><div className="sub">WATER QUALITY INTELLIGENCE</div><div className="nav">{nav.map(x=><button key={x[0]} className={v===x[0]?'active':''} onClick={()=>setV(x[0])}>{x[1]}</button>)}</div><div className="demo">Fort Myers Demonstration Environment<br/>Independent product demonstration.<br/>Not an official City system.</div></aside><main className="main">{c}</main></div>}
+
+function Reports(){
+ const [tab,setTab]=useState('executive');
+ const [notice,setNotice]=useState('');
+ const prepare=(label)=>setNotice(label+' is ready for prototype print/export.');
+ return <>
+  <Head t="Reports & DEP Readiness" s="Executive reporting, regulatory package readiness and audit-ready exports"/>
+  <div className="grid4">
+   <K n="76%" l="2027 Milestone Achieved" m="Verified position"/>
+   <K n="4,416" l="Confirmed TN Gap" m="lbs/year"/>
+   <K n="75%" l="BMAP-027 Evidence Ready" m="3 of 4 items available"/>
+   <K n="1" l="Critical Evidence Gap" m="DEP correspondence"/>
+  </div>
+  {notice && <div className="success section">✓ {notice}<button className="closeNotice" onClick={()=>setNotice('')}>×</button></div>}
+  <div className="reportTabs section">
+   <button className={'btn '+(tab!=='executive'?'secondary':'')} onClick={()=>setTab('executive')}>Executive BMAP Report</button>
+   <button className={'btn '+(tab!=='dep'?'secondary':'')} onClick={()=>setTab('dep')}>DEP Readiness Package</button>
+   <button className={'btn '+(tab!=='capital'?'secondary':'')} onClick={()=>setTab('capital')}>Capital Plan Summary</button>
+   <button className={'btn '+(tab!=='audit'?'secondary':'')} onClick={()=>setTab('audit')}>Audit Log</button>
+  </div>
+
+  {tab==='executive' && <div className="two">
+   <div className="card reportPaper">
+    <div className="reportHead"><div><div className="eyebrow">CIVICOPS · DEMONSTRATION REPORT</div><h2>2027 BMAP Executive Status</h2><div className="muted">Caloosahatchee River & Estuary · Fort Myers planning view</div></div><span className="tag red">At Risk</span></div>
+    <div className="grid3 compact"><div><b>18,400</b><span>Required TN</span></div><div><b>13,984</b><span>Verified TN</span></div><div><b>4,416</b><span>Confirmed Gap</span></div></div>
+    <h3>Milestone Position</h3><div className="progress"><div className="bar" style={{width:'76%'}}></div></div>
+    <div className="metricline"><span>Verified achievement</span><b>76%</b></div><div className="metricline"><span>Projected including pending credits</span><b>87.5%</b></div>
+    <h3>Management Attention</h3><div className="alert risk"><b>2027 milestone remains at risk.</b><div className="small">4,416 lbs/yr of confirmed TN reduction remains unresolved.</div></div>
+    <div className="alert"><b>Evidence package incomplete.</b><div className="small">BMAP-027 DEP correspondence is still missing.</div></div>
+    <h3>Watershed Summary</h3>{W.map(w=><div className="metricline" key={w.n}><span>{w.n}</span><span><b>{Math.round(w.v/w.t*100)}%</b> · {w.s}</span></div>)}
+    <div className="reportFoot">Prototype values are demonstration workflow data and are not official City or DEP determinations.</div>
+   </div>
+   <div className="card"><h2>Report Actions</h2><p>Prepare a management-ready snapshot of the current BMAP position.</p><button className="btn full" onClick={()=>prepare('Executive BMAP report')}>Prepare PDF / Print View</button><button className="btn outline full" onClick={()=>prepare('Executive data extract')}>Prepare Data Extract</button><h3>Included Sections</h3>{['Milestone position','Watershed performance','Project portfolio','Nutrient-credit status','Evidence gaps','Capital-planning position'].map(x=><div className="check" key={x}>✓ {x}</div>)}</div>
+  </div>}
+
+  {tab==='dep' && <div className="two">
+   <div className="card"><div className="reportHead"><div><div className="eyebrow">PACKAGE · BMAP-027</div><h2>DEP Readiness Checklist</h2></div><div className="readinessRing">75%</div></div>
+    <div className="evidence"><div><b>Engineering Calculation</b><div className="muted">Nutrient Reduction Calculation v3</div></div><span className="tag green">Approved</span></div>
+    <div className="evidence"><div><b>Project Design</b><div className="muted">90% Project Design Package</div></div><span className="tag green">Approved</span></div>
+    <div className="evidence"><div><b>Monitoring Dataset</b><div className="muted">September Monitoring Dataset</div></div><span className="tag green">Available</span></div>
+    <div className="evidence"><div><b>DEP Verification Correspondence</b><div className="muted">Credit Review Correspondence</div></div><span className="tag red">Missing</span></div>
+    <div className="alert risk"><b>Submission blocker:</b> DEP verification correspondence has not been attached.</div>
+   </div>
+   <div className="card"><h2>Package Control</h2><div className="metricline"><b>Project</b><span>BMAP-027</span></div><div className="metricline"><b>Credit</b><span>NC-2027-0042</span></div><div className="metricline"><b>Submitted TN</b><span>2,480 lbs/yr</span></div><div className="metricline"><b>Verified TN</b><span>2,125 lbs/yr</span></div><div className="metricline"><b>Readiness</b><span>75%</span></div><button className="btn full" disabled>Package Not Ready</button><p className="note">CivicOps blocks a ready state while required evidence is missing. Production package generation would compile source documents and metadata into the City's approved submission structure.</p></div>
+  </div>}
+
+  {tab==='capital' && <div className="two">
+   <div className="card reportPaper"><div className="eyebrow">CAPITAL DECISION BRIEF</div><h2>Modeled 2027 Gap-Closure Portfolio</h2>
+    <div className="grid3 compact"><div><b>$10.05M</b><span>Investment</span></div><div><b>4,570</b><span>TN lbs/yr</span></div><div><b>$2,199</b><span>Cost / lb</span></div></div>
+    <div className="goodbox"><b>✓ Modeled portfolio closes the confirmed gap</b><div className="small">154 lbs/yr modeled surplus above the 4,416 lbs/yr demonstration gap.</div></div>
+    <h3>Selected Projects</h3>{CAP.filter((_,i)=>[2,3,4].includes(i)).map(x=><div className="evidence" key={x.id}><div><b>{x.name}</b><div className="muted">{x.id} · {x.ready}</div></div><div style={{textAlign:'right'}}><b>{money(x.cost)}</b><div className="muted">{nf(x.tn)} lbs/yr</div></div></div>)}
+    <div className="reportFoot">Planning scenario only. Not an adopted budget, engineering estimate, procurement decision, or DEP-approved credit position.</div>
+   </div>
+   <div className="card"><h2>Decision Controls</h2><div className="metricline"><b>Current verified</b><span>13,984</span></div><div className="metricline"><b>Modeled addition</b><span>+4,570</span></div><div className="metricline"><b>Modeled total</b><span>18,554</span></div><div className="metricline"><b>Requirement</b><span>18,400</span></div><button className="btn full" onClick={()=>prepare('Capital plan summary')}>Prepare Decision Brief</button></div>
+  </div>}
+
+  {tab==='audit' && <div className="card"><div className="reportHead"><div><h2>Audit & Activity Log</h2><p className="muted">Traceability across credits, evidence, monitoring and planning decisions.</p></div><button className="btn" onClick={()=>prepare('Audit log export')}>Prepare Export</button></div>
+   <table><thead><tr><th>Date</th><th>User</th><th>Record</th><th>Action</th><th>Result</th></tr></thead><tbody>
+    <tr><td>Sep 22, 2026</td><td>J. Doe</td><td>DT-02</td><td>Monitoring sample entered</td><td><span className="tag amber">Pending QA</span></td></tr>
+    <tr><td>Sep 21, 2026</td><td>A. Rivera</td><td>EV-027-03</td><td>Monitoring dataset attached</td><td><span className="tag green">Available</span></td></tr>
+    <tr><td>Sep 18, 2026</td><td>A. Rivera</td><td>NC-2027-0042</td><td>Credit submitted for review</td><td><span className="tag purple">DEP Review</span></td></tr>
+    <tr><td>Sep 12, 2026</td><td>Engineering</td><td>EV-027-01</td><td>Calculation approved</td><td><span className="tag green">Approved</span></td></tr>
+   </tbody></table><div className="note section">Demonstration activity log. Production audit history would be immutable, timestamped, permission-aware and tied to authenticated users.</div>
+  </div>}
+ </>;
+}
+export default function Home(){const[v,setV]=useState('dashboard');const nav=[['dashboard','▣ Command Center'],['watersheds','⌖ Watersheds'],['obligations','◎ BMAP Obligations'],['projects','▤ Projects'],['credits','◉ Nutrient Credits'],['monitoring','⌁ Monitoring & Evidence'],['capital','◆ Capital Planning'],['reports','▧ Reports']];let c=v==='dashboard'?<Dash go={setV}/>:v==='watersheds'?<Waters/>:v==='obligations'?<Oblig/>:v==='projects'?<Projects/>:v==='credits'?<Credits/>:v==='monitoring'?<Monitoring/>:v==='capital'?<Capital/>:<Reports/>;return <div className="app"><aside className="side"><div className="brand">CivicOps</div><div className="sub">WATER QUALITY INTELLIGENCE</div><div className="nav">{nav.map(x=><button key={x[0]} className={v===x[0]?'active':''} onClick={()=>setV(x[0])}>{x[1]}</button>)}</div><div className="demo">Fort Myers Demonstration Environment<br/>Independent product demonstration.<br/>Not an official City system.</div></aside><main className="main">{c}</main></div>}
