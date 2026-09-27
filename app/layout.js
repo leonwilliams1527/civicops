@@ -1,1 +1,1 @@
-import './styles.css'; export const metadata={title:'CivicOps | Fort Myers Demo'}; export default function L({children}){return <html><body>{children}</body></html>}
+import './globals.css'; export const metadata={title:'CivicOps Water Quality'}; export default function Layout({children}){return <html><body>{children}</body></html>}
