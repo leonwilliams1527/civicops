@@ -188,4 +188,15 @@ function Coordination(){
  </>;
 }
 
-export default function Home(){const[v,setV]=useState('dashboard');const nav=[['dashboard','▣ Command Center'],['watersheds','⌖ Watersheds'],['obligations','◎ BMAP Obligations'],['projects','▤ Projects'],['credits','◉ Nutrient Credits'],['monitoring','⌁ Monitoring & Evidence'],['capital','◆ Capital Planning'],['reports','▧ Reports'],['pilot','⚙ Phase 5 Pilot'],['coordination','⇄ Department Coordination']];let c=v==='dashboard'?<Dash go={setV}/>:v==='watersheds'?<Waters/>:v==='obligations'?<Oblig/>:v==='projects'?<Projects/>:v==='credits'?<Credits/>:v==='monitoring'?<Monitoring/>:v==='capital'?<Capital/>:v==='reports'?<Reports/>:v==='coordination'?<Coordination/>:<PilotWorkspace/>;return <div className="app"><aside className="side"><div className="brand">CivicOps</div><div className="sub">WATER QUALITY INTELLIGENCE</div><div className="nav"><a href="/collaboration" style={{display:"block",padding:"12px 15px",color:"#dbeafe",textDecoration:"none",fontWeight:700}}>☁ Phase 7 Live Collaboration</a>{nav.map(x=><button key={x[0]} className={v===x[0]?'active':''} onClick={()=>setV(x[0])}>{x[1]}</button>)}</div><div className="demo">Fort Myers Demonstration Environment<br/>Independent product demonstration.<br/>Not an official City system.</div></aside><main className="main">{c}</main></div>}
+export default function Home(){
+ const [v,setV]=useState('dashboard');
+ const [expanded,setExpanded]=useState({water:true,planning:false,legacy:false});
+ const groups=[
+ {label:'WORKSPACE',items:[['dashboard','▣ Dashboard'],['collaboration','⇄ Department Collaboration'],['projects','▤ Projects & Programs']]},
+ {label:'SPECIALIST TOOLS',id:'water',items:[['watersheds','⌖ Watersheds'],['obligations','◎ BMAP Obligations'],['credits','◉ Nutrient Credits'],['monitoring','⌁ Monitoring & Evidence']]},
+ {label:'PLANNING & REPORTING',id:'planning',items:[['capital','◆ Capital Planning'],['reports','▧ Reports']]},
+ {label:'DEMONSTRATION TOOLS',id:'legacy',items:[['coordination','⇄ Local Coordination (Phase 6)'],['pilot','⚙ Phase 5 Pilot']]}
+ ];
+ const views={dashboard:<Dash go={setV}/>,watersheds:<Waters/>,obligations:<Oblig/>,projects:<Projects/>,credits:<Credits/>,monitoring:<Monitoring/>,capital:<Capital/>,reports:<Reports/>,coordination:<Coordination/>,pilot:<PilotWorkspace/>};
+ return <div className="app"><aside className="side"><div className="brand">CivicOps</div><div className="sub">CROSS-DEPARTMENT WORKSPACE</div><div className="nav">{groups.map(group=><div key={group.label} className="navGroup"><button className="navGroupTitle" aria-expanded={!group.id||!!expanded[group.id]} onClick={()=>group.id&&setExpanded(x=>({...x,[group.id]:!x[group.id]}))}>{group.label} {group.id?(expanded[group.id]?'▾':'▸'):''}</button>{(!group.id||expanded[group.id])&&group.items.map(([id,label])=>id==='collaboration'?<a key={id} className="navItem" href="/collaboration">{label}</a>:<button key={id} className={v===id?'active':''} onClick={()=>setV(id)}>{label}</button>)}</div>)}</div><div className="demo">DEMONSTRATION DATA<br/>Independent product demonstration.<br/>Not an official City system.</div></aside><main className="main">{views[v]||views.dashboard}</main></div>
+}
