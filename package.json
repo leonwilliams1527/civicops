@@ -1,1 +1,17 @@
-{"name":"civicops-water-quality","version":"0.7.0","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"^15.5.9","react":"^19.1.0","react-dom":"^19.1.0","@supabase/supabase-js":"^2.57.0"}}
+{
+  "name": "civicops-water-quality",
+  "version": "0.7.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^15.5.9",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@supabase/supabase-js": "^2.57.0",
+    "read-excel-file": "^5.8.8"
+  }
+}

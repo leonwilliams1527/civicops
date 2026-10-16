@@ -58,3 +58,5 @@
 .co-attention-tag{display:inline-flex;align-items:center;vertical-align:middle;border-radius:999px;padding:4px 10px;background:#fff0db;color:#884200;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;margin-right:8px}
 .co-metric-grid{grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
 @media(max-width:600px){.co-attention-tag{white-space:normal}}
+
+.co-reports-link{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;background:#eaf3ff;border:1px solid #cfe0f7;border-radius:16px;margin:18px 0}.co-reports-link p{margin:4px 0 0;color:#546985}.co-reports-link a{text-decoration:none;white-space:nowrap}@media(max-width:640px){.co-reports-link{flex-direction:column;align-items:stretch}}
