@@ -7,3 +7,6 @@
 .co-status-event .co-status{flex-shrink:0;max-width:100%;overflow:visible}
 .co-request{min-width:0;overflow:visible}
 .co-status{line-height:1.35;vertical-align:middle}
+
+/* Phase 8: department file library and request attachments */
+.co-files{margin:0 0 18px}.co-file-upload{display:grid;grid-template-columns:minmax(150px,220px) minmax(200px,1fr) auto;gap:12px;align-items:end;margin:15px 0}.co-file-list{margin-top:15px}.co-file-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-top:1px solid #e7edf4;min-width:0}.co-file-row>div{min-width:0;display:grid;gap:5px}.co-file-row strong{font-size:13px;overflow-wrap:anywhere}.co-file-action{border:1px solid #bdd8ed;background:#f2f8ff;border-radius:8px;color:#1264a4;padding:8px 12px;font-weight:700}.co-request-files{padding:18px 24px;border-top:1px solid #e7edf4}.co-notice{position:sticky;top:10px;z-index:50;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 20px #1d35521a}.co-notice button{border:0;background:transparent;color:inherit;font-size:22px;padding:0 5px}@media(max-width:750px){.co-file-upload{grid-template-columns:1fr}.co-file-row{flex-wrap:wrap}.co-request-files{padding:18px}}
