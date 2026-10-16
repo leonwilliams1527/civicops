@@ -38,3 +38,15 @@
 .co-status-event .co-status{display:inline-flex;align-items:center;justify-content:center;line-height:1.2;vertical-align:middle;white-space:nowrap;flex-shrink:0;min-height:23px;padding:4px 10px}
 @media(max-width:900px){.co-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.co-metric-grid{grid-template-columns:1fr 1fr;gap:8px}.co-metric{padding:12px}.co-metric>strong{font-size:25px}.co-photo-editor{align-items:flex-start}}
+/* Phase 8.3: consistent activity badges and notifications */
+.co-status-event{display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.3;min-height:28px}
+.co-status-event .co-status,.co-request .co-status{display:inline-flex;align-items:center;justify-content:center;line-height:1;min-height:26px;padding:6px 10px;vertical-align:middle;box-sizing:border-box}
+.co-status-label,.co-status-arrow{display:inline-flex;align-items:center;min-height:26px;line-height:1.1}
+.co-identity-actions{display:flex;align-items:center;gap:10px;position:relative;flex-wrap:wrap}
+.co-bell-wrap{position:relative}.co-alert-count{background:#c92b3b;color:#fff;border-radius:30px;padding:2px 7px;margin-left:5px;font-size:11px}
+.co-bell-panel{position:absolute;z-index:90;right:0;top:calc(100% + 9px);width:min(370px,88vw);max-height:450px;overflow:auto;border:1px solid #d6e4f0;border-radius:14px;background:white;box-shadow:0 14px 36px #102f5029;padding:14px}
+.co-alert-item{display:flex;flex-direction:column;text-align:left;gap:5px;padding:13px 10px;border:0;border-bottom:1px solid #e7edf3;background:white;width:100%;font-size:12px;color:#324d67}.co-alert-item.unread{background:#f0f7ff}.co-alert-item strong{font-size:13px;color:#173b61}.co-alert-item small{color:#74869b}
+.co-crop-controls{display:grid;gap:8px;margin:12px 0}.co-crop-controls label{display:grid;grid-template-columns:145px minmax(110px,1fr);align-items:center;gap:10px;font-size:12px}.co-crop-controls input{width:100%;margin:0}
+.co-photo-preview img{transition:object-position .1s,transform .1s}
+.co-preferences{border-top:1px solid #e4edf5;margin-top:22px;padding-top:20px;display:grid;gap:12px;width:100%}.co-preferences h3{margin:0}.co-preferences label{display:flex;gap:10px;align-items:center;font-size:13px}.co-preferences input{width:auto}
+@media(max-width:650px){.co-identity-actions{width:100%}.co-bell-wrap,.co-identity-actions>.co-account-btn{flex:1}.co-crop-controls label{grid-template-columns:1fr}}
