@@ -60,3 +60,10 @@
 @media(max-width:600px){.co-attention-tag{white-space:normal}}
 
 .co-reports-link{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;background:#eaf3ff;border:1px solid #cfe0f7;border-radius:16px;margin:18px 0}.co-reports-link p{margin:4px 0 0;color:#546985}.co-reports-link a{text-decoration:none;white-space:nowrap}@media(max-width:640px){.co-reports-link{flex-direction:column;align-items:stretch}}
+
+/* Phase 14: one navigation across the live operational workspace. */
+.co-unified-nav{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;margin:12px 0 20px;background:#0d2b47;border-radius:12px;align-items:center}
+.co-unified-nav a,.co-unified-nav button{color:#fff;background:transparent;border:0;text-decoration:none;font:inherit;font-size:13px;padding:9px 11px;border-radius:7px;cursor:pointer}
+.co-unified-nav a:hover,.co-unified-nav button:hover,.co-unified-nav a:focus-visible,.co-unified-nav button:focus-visible{background:#17639b;outline:2px solid #a5d9ff;outline-offset:1px}
+#co-overview,#co-requests,#co-files{scroll-margin-top:18px}
+@media(max-width:700px){.co-unified-nav{gap:2px}.co-unified-nav a,.co-unified-nav button{font-size:12px;padding:9px 7px}}
