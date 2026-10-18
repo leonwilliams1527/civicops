@@ -79,3 +79,11 @@
 .co-ownership-summary div{display:flex;flex-direction:column;gap:4px;min-width:0}.co-ownership-summary small{font-size:11px;color:#64748b}.co-ownership-summary strong{font-size:14px;overflow-wrap:anywhere}.co-ownership-summary span{font-size:12px;color:#64748b}
 .co-claim-btn{margin-top:10px;padding:9px 12px;background:#0b67b8;color:white;border:0;border-radius:9px;cursor:pointer;font-weight:600}
 @media(max-width:680px){.co-ownership-summary{grid-template-columns:1fr}}
+
+/* Phase 16: single accessible notification entry in the global navigation */
+.co-nav-bell{display:inline-flex;align-items:center}
+.co-nav-bell>.co-bell-panel{color:#173453;text-align:left}
+.co-nav-bell .co-bell-panel button{color:#173453}
+.co-nav-bell .co-bell-panel .co-alert-item{display:flex;flex-direction:column;width:100%;text-align:left;color:#173453}
+.co-nav-bell .co-bell-panel .co-alert-item:hover{background:#edf5fc}
+.co-unified-nav .co-alert-count{min-width:18px;height:18px;padding:0 5px;margin-left:6px;box-shadow:none;font-size:10px}
