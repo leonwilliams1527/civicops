@@ -67,3 +67,8 @@
 .co-unified-nav a:hover,.co-unified-nav button:hover,.co-unified-nav a:focus-visible,.co-unified-nav button:focus-visible{background:#17639b;outline:2px solid #a5d9ff;outline-offset:1px}
 #co-overview,#co-requests,#co-files{scroll-margin-top:18px}
 @media(max-width:700px){.co-unified-nav{gap:2px}.co-unified-nav a,.co-unified-nav button{font-size:12px;padding:9px 7px}}
+
+/* Phase 14.1: independent routes, one authenticated workspace */
+.co-view-dashboard .co-toolbar,.co-view-dashboard .co-create,.co-view-dashboard .co-files,.co-view-dashboard .co-workspace{display:none!important}
+.co-view-projects .co-reports-link,.co-view-projects .co-dashboard,.co-view-projects .co-task-overview,.co-view-projects .co-files{display:none!important}
+.co-view-documents .co-toolbar,.co-view-documents .co-create,.co-view-documents .co-reports-link,.co-view-documents .co-dashboard,.co-view-documents .co-task-overview,.co-view-documents .co-workspace{display:none!important}
