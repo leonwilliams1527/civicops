@@ -87,3 +87,46 @@
 .co-nav-bell .co-bell-panel .co-alert-item{display:flex;flex-direction:column;width:100%;text-align:left;color:#173453}
 .co-nav-bell .co-bell-panel .co-alert-item:hover{background:#edf5fc}
 .co-unified-nav .co-alert-count{min-width:18px;height:18px;padding:0 5px;margin-left:6px;box-shadow:none;font-size:10px}
+
+/* Phase 23.2 — Mobile-first workspace layout */
+.co-mobile-nav-bar{display:none}
+@media(max-width:767px){
+ .co-page{width:100%;max-width:100%;min-width:0;padding:16px 14px 36px;overflow-x:clip}
+ .co-page :is(.co-card,.co-identity,.co-workspace,.co-detail,.co-list,.co-profile-screen){min-width:0;max-width:100%}
+ .co-page :is(h1,h2,h3,p,strong,span,a){overflow-wrap:anywhere}
+ .co-header{gap:10px;padding-bottom:10px;min-width:0}
+ .co-header h1{font-size:clamp(24px,7vw,30px);line-height:1.2}
+ .co-header-right{width:100%;flex-wrap:wrap;gap:10px;white-space:normal}
+ .co-eyebrow{letter-spacing:.8px}
+ .co-mobile-nav-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#0d2b47;color:#fff;padding:11px 14px;border-radius:12px;margin:12px 0 0;font-weight:750;font-size:14px}
+ .co-mobile-nav-bar button{background:#1767b5;border:1px solid #5799cd;color:#fff;border-radius:8px;padding:10px 13px;font-size:13px;min-height:42px}
+ .co-unified-nav{display:none!important;flex-direction:column;align-items:stretch;gap:3px;margin:0 0 18px;padding:9px;background:#0d2b47;border-radius:0 0 12px 12px}
+ .co-unified-nav.co-mobile-nav-open{display:flex!important}
+ .co-unified-nav a,.co-unified-nav>button,.co-unified-nav .co-nav-bell>button{display:block;width:100%;text-align:left;min-height:44px;padding:12px;font-size:14px}
+ .co-unified-nav .co-nav-bell{width:100%}
+ .co-unified-nav .co-bell-panel{position:static!important;width:100%!important;max-width:100%!important;box-sizing:border-box}
+ .co-identity{align-items:stretch;flex-direction:column;gap:13px;padding:14px}
+ .co-person{width:100%;min-width:0}
+ .co-person>div:last-child{flex:1;min-width:0}
+ .co-identity-actions{display:flex;flex-wrap:wrap;width:100%;gap:8px}
+ .co-account-btn{width:100%;text-align:center;min-height:44px}
+ .co-card{padding:16px;border-radius:14px}
+ .co-profile-screen{padding:16px;margin:12px 0}
+ .co-profile-fields,.co-profile-fields label{min-width:0;width:100%}
+ .co-profile-fields .co-primary{width:100%;min-height:44px}
+ .co-toolbar{align-items:flex-start;flex-direction:column;gap:12px}
+ .co-toolbar h2{font-size:21px}
+ .co-workspace{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+ .co-list{max-height:none}
+ .co-detail-head,.co-conversation,.co-compose,.co-request-files{padding:16px}
+ .co-request-top{flex-wrap:wrap}
+ .co-create-grid{grid-template-columns:minmax(0,1fr)}
+ .co-file-upload{grid-template-columns:minmax(0,1fr)}
+ .co-file-row{flex-wrap:wrap}
+ .co-file-row button{min-height:42px}
+ .co-page input,.co-page select,.co-page textarea{font-size:16px;max-width:100%}
+ .co-page .co-primary{min-height:44px}
+ .co-attachment-upload{flex-direction:column}
+ .co-attachment-upload>.co-primary{width:100%}
+ .co-activity-head{flex-wrap:wrap}
+}

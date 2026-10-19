@@ -15,3 +15,24 @@
 
 /* Phase 7.1 grouped navigation */
 .side{overflow-y:auto;padding-bottom:115px}.navGroup{margin-bottom:12px}.nav .navGroupTitle{font-size:10px;letter-spacing:1.1px;color:#9bb8d2;font-weight:800;padding:9px 11px 5px;margin:0}.nav .navGroupTitle:hover{background:transparent}.nav .navItem{display:block;color:#dce8f5;text-decoration:none;font-size:13px;padding:12px 13px;border-radius:8px}.nav .navItem:hover{background:#0d67aa}.navGroup button:not(.navGroupTitle){font-size:13px}.demo{position:static;margin-top:26px}.side{position:sticky;top:0;align-self:flex-start;height:100vh}.main{margin-left:0;width:calc(100% - 245px)}@media(max-width:950px){.main{width:calc(100% - 190px)}}@media(max-width:700px){.side{position:static;height:auto;padding-bottom:16px}.main{width:100%}}
+
+/* Phase 23.2 — safe responsive foundations across every route */
+html{max-width:100%;overflow-x:clip}
+body{min-width:0;max-width:100%;overflow-x:clip}
+img,video,svg{max-width:100%}
+button,input,select,textarea{max-width:100%}
+@media(max-width:767px){
+ .app,.main,.card,.reportPaper,.reportHead,.foundationBanner,.top{min-width:0;max-width:100%}
+ .main{padding:14px!important}
+ .top,.reportHead,.foundationBanner{flex-wrap:wrap;gap:10px}
+ .top h1{font-size:clamp(22px,7vw,29px)}
+ .grid4,.grid3,.two,.formgrid,.permissionGrid,.architecture{grid-template-columns:minmax(0,1fr)!important}
+ .card{padding:15px}
+ .grid3.compact>div{border-right:0;border-bottom:1px solid #dce5ed;padding:10px 0}
+ .grid3.compact>div:last-child{border-bottom:0}
+ .reportTabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;max-width:100%}
+ .reportTabs button{flex:0 0 auto;min-height:42px}
+ .tableScroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+ .tableScroll table{width:max-content;min-width:600px}
+ .btn{min-height:42px}
+}
