@@ -42,17 +42,7 @@ export async function GET(request){
   if(!c.isSuper)query=query.eq('department',c.membership.department);
   const {data,error}=await query;
   if(error)throw error;
-  for(const inv of data||[]){
-   if(inv.status!=='pending')continue;
-   const {data:record}=await c.admin.from('civicops_employee_invitations').select('invited_user_id').eq('id',inv.id).maybeSingle();
-   if(!record?.invited_user_id)continue;
-   const {data:userRecord}=await c.admin.auth.admin.getUserById(record.invited_user_id);
-   if(userRecord?.user?.email_confirmed_at){
-    await c.admin.from('civicops_employee_invitations').update({status:'accepted',accepted_at:userRecord.user.email_confirmed_at}).eq('id',inv.id);
-    inv.status='accepted';inv.accepted_at=userRecord.user.email_confirmed_at;
-   }
-  }
-  return respond({invitations:data,isSuper:c.isSuper,departments:c.isSuper?departments:[c.membership.department]});
+  return respond({invitations:(data||[]).filter(inv=>inv.status==='pending'),isSuper:c.isSuper,departments:c.isSuper?departments:[c.membership.department]});
  }catch(e){return respond({error:String(e.message||e)},500);}
 }
 export async function POST(request){
@@ -82,7 +72,8 @@ export async function POST(request){
   }
   if(found)return respond({error:'This email already has an account. Manage its existing membership instead.'},409);
   const site=process.env.NEXT_PUBLIC_SITE_URL||new URL(request.url).origin;
-  const redirectTo=new URL('/collaboration',site).toString();
+  if(!site.startsWith('https://')&&!site.startsWith('http://localhost:'))return respond({error:'Configure NEXT_PUBLIC_SITE_URL to the public HTTPS CivicOps URL'},503);
+  const redirectTo=new URL('/auth/activate?flow=invite',site).toString();
   const {data:invited,error:inviteError}=await c.admin.auth.admin.inviteUserByEmail(email,{redirectTo,data:{full_name:fullName}});
   if(inviteError||!invited?.user) return respond({error:inviteError?.message||'Invite failed'},400);
   const uid=invited.user.id;
@@ -117,7 +108,7 @@ export async function PATCH(request){
    // Generate a fresh one-time invite link and send through configured Resend.
    if(!process.env.RESEND_API_KEY||!process.env.CIVICOPS_EMAIL_FROM)
     return respond({error:'Resend requires RESEND_API_KEY and CIVICOPS_EMAIL_FROM on the server'},503);
-   const redirectTo=new URL('/collaboration',process.env.NEXT_PUBLIC_SITE_URL||new URL(request.url).origin).toString();
+   const redirectTo=new URL('/auth/activate?flow=invite',process.env.NEXT_PUBLIC_SITE_URL||new URL(request.url).origin).toString();
    const {data:link,error:linkError}=await c.admin.auth.admin.generateLink({type:'invite',email:inv.email,options:{redirectTo}});
    if(linkError||!link?.properties?.action_link)return respond({error:linkError?.message||'Could not create invite link'},500);
    const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({from:process.env.CIVICOPS_EMAIL_FROM,to:[inv.email],subject:'Your CivicOps invitation',text:`You have been invited to CivicOps. Accept your invitation here:\n\n${link.properties.action_link}\n\nIf you did not expect this invitation, ignore this email.`})});
