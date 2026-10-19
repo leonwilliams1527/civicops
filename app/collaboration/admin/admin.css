@@ -53,3 +53,41 @@
  .co-admin #civicops-employees label{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;width:100%}
  .co-admin #civicops-employees select{margin-left:0;min-width:0;max-width:100%;flex:1}
 }
+
+/* Phase 23.4: compact, scannable mobile records (override earlier stacked table rules). */
+@media (max-width:767px){
+ .co-admin{padding:16px 12px 36px}
+ .co-admin .panel{padding:17px 15px;margin-top:14px}
+ .co-admin .panel h2{font-size:21px;line-height:1.25}
+ .co-admin .tablewrap tr{gap:0;padding:0;border-bottom:0}
+ .co-admin .co-employee-table tbody,.co-admin .co-audit-table tbody,.co-admin .co-invitation-table tbody{display:grid;gap:10px}
+ .co-admin .co-employee-table tr,.co-admin .co-audit-table tr,.co-admin .co-invitation-table tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:11px 14px;padding:14px;border:1px solid #dbe5f0;border-radius:12px;background:#fff;min-width:0}
+ .co-admin .tablewrap td{font-size:14px;line-height:1.35;overflow-wrap:normal;word-break:normal;min-width:0}
+ .co-admin .tablewrap td::before{font-size:10px;letter-spacing:.07em;margin-bottom:4px;line-height:1.2}
+ .co-admin .co-employee-table td:nth-child(1){grid-column:1/-1;font-size:17px;line-height:1.3;padding-bottom:10px;border-bottom:1px solid #e5edf5}
+ .co-admin .co-employee-table td:nth-child(1) small{display:block;margin-top:3px;color:#5c718a;font-weight:400;font-size:12px}
+ .co-admin .co-employee-table td:nth-child(1) br{display:none}
+ .co-admin .co-employee-table td:nth-child(2){grid-column:1}
+ .co-admin .co-employee-table td:nth-child(3){grid-column:2;text-transform:capitalize}
+ .co-admin .co-employee-table td:nth-child(4){grid-column:1/-1;padding-top:3px}
+ .co-admin .co-employee-table td:nth-child(4)::before{display:none}
+ .co-admin .co-employee-table td:nth-child(4) button{padding:9px 13px;min-height:40px}
+ .co-admin .co-audit-table td:nth-child(1){grid-column:1/-1;font-size:12px;color:#647991}
+ .co-admin .co-audit-table td:nth-child(1)::before{display:none}
+ .co-admin .co-audit-table td:nth-child(2){grid-column:1/-1;font-weight:700;color:#1b3857;font-size:15px;overflow-wrap:anywhere}
+ .co-admin .co-audit-table td:nth-child(2)::before{display:none}
+ .co-admin .co-audit-table td:nth-child(3){grid-column:1}
+ .co-admin .co-audit-table td:nth-child(4){display:none}
+ .co-admin .co-audit-table td:nth-child(5){grid-column:1/-1;background:#f2f6fb;padding:10px 12px;border-radius:8px;font-size:13px;overflow-wrap:anywhere}
+ .co-admin .co-audit-table td:nth-child(5)::before{display:none}
+ .co-admin .co-invitation-table td:nth-child(1){grid-column:1/-1;font-weight:700;font-size:16px}
+ .co-admin .co-invitation-table td:nth-child(2){grid-column:1/-1;overflow-wrap:anywhere}
+ .co-admin .co-invitation-table td:nth-child(3){grid-column:1}
+ .co-admin .co-invitation-table td:nth-child(4){grid-column:2}
+ .co-admin .co-invitation-table td:nth-child(5){grid-column:1}
+ .co-admin .co-invitation-table td:nth-child(6){grid-column:1/-1}
+ .co-admin #civicops-employees{display:grid;grid-template-columns:1fr;gap:10px}
+ .co-admin #civicops-employees h3{margin:0}
+ .co-admin #civicops-employees label{display:grid;grid-template-columns:1fr;align-items:stretch;gap:6px}
+ .co-admin #civicops-employees select{width:100%;margin:0;min-height:44px}
+}
