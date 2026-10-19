@@ -20,3 +20,36 @@
  button{min-height:42px}
  .department-grid,.invite-form{grid-template-columns:minmax(0,1fr)!important}
 }
+
+/* Phase 23.2.1: readable admin data on small screens. Desktop remains a table. */
+@media (max-width:767px){
+ .co-admin{padding:16px 12px 40px;min-width:0;width:100%;box-sizing:border-box}
+ .co-admin .panel{padding:16px 14px;min-width:0}
+ .co-admin .tablewrap{overflow:visible;max-width:100%}
+ .co-admin .tablewrap table,.co-admin .tablewrap tbody{display:block;width:100%;max-width:100%;overflow:visible}
+ .co-admin .tablewrap thead{display:none}
+ .co-admin .tablewrap tr{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:16px 0;border-bottom:1px solid #dce5f0}
+ .co-admin .tablewrap td{display:block;border:0;padding:0;min-width:0;overflow-wrap:break-word;word-break:normal;white-space:normal;line-height:1.45;font-size:14px}
+ .co-admin .tablewrap td::before{display:block;font-size:10px;letter-spacing:.65px;text-transform:uppercase;font-weight:700;color:#58708c;margin-bottom:2px}
+ .co-admin .co-employee-table td:nth-child(1){font-weight:700;font-size:16px}
+ .co-admin .co-employee-table td:nth-child(1)::before{content:'Employee'}
+ .co-admin .co-employee-table td:nth-child(2)::before{content:'Department'}
+ .co-admin .co-employee-table td:nth-child(3)::before{content:'Role'}
+ .co-admin .co-employee-table td:nth-child(4)::before{content:'Action'}
+ .co-admin .co-invitation-table td:nth-child(1)::before{content:'Employee'}
+ .co-admin .co-invitation-table td:nth-child(2)::before{content:'Email'}
+ .co-admin .co-invitation-table td:nth-child(3)::before{content:'Department'}
+ .co-admin .co-invitation-table td:nth-child(4)::before{content:'Access'}
+ .co-admin .co-invitation-table td:nth-child(5)::before{content:'Status'}
+ .co-admin .co-invitation-table td:nth-child(6)::before{content:'Actions'}
+ .co-admin .co-audit-table td:nth-child(1)::before{content:'When'}
+ .co-admin .co-audit-table td:nth-child(2)::before{content:'Event'}
+ .co-admin .co-audit-table td:nth-child(3)::before{content:'Department'}
+ .co-admin .co-audit-table td:nth-child(4)::before{content:'Record'}
+ .co-admin .co-audit-table td:nth-child(5)::before{content:'Details'}
+ .co-admin .co-audit-table td:nth-child(5){background:#f4f8fd;border-radius:8px;padding:10px;overflow-wrap:anywhere}
+ .co-admin .tablewrap button{width:auto;max-width:100%;min-height:44px;white-space:normal;overflow-wrap:normal}
+ .co-admin #civicops-employees{align-items:stretch}
+ .co-admin #civicops-employees label{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;width:100%}
+ .co-admin #civicops-employees select{margin-left:0;min-width:0;max-width:100%;flex:1}
+}
