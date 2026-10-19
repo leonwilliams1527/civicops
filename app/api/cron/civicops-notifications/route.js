@@ -1,3 +1,4 @@
+import {civicopsEmail} from '../../../../lib/civicops-email';
 import {NextResponse} from 'next/server';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
@@ -34,7 +35,7 @@ export async function GET(request){
     const pref=await fetch(`${base}/rest/v1/notification_preferences?user_id=eq.${item.recipient_id}&select=email_enabled`,{headers,cache:'no-store'});
     if(!pref.ok)throw Error('Unable to verify notification preferences');
     if((await pref.json())[0]?.email_enabled===false){await rpc('civicops_finish_email',{p_id:item.id,p_sent:true});continue;}
-    const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Authorization':`Bearer ${resend}`,'Content-Type':'application/json','Idempotency-Key':item.id},body:JSON.stringify({from,to:[user.email],subject:`CivicOps: ${notification.title}`,text:`${notification.title}\n\n${notification.body}\n\nOpen CivicOps to review the request.`}),cache:'no-store'});
+    const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Authorization':`Bearer ${resend}`,'Content-Type':'application/json','Idempotency-Key':item.id},body:JSON.stringify({from,to:[user.email],subject:`CivicOps: ${notification.title}`,text:`${notification.title}\n\n${notification.body}\n\nOpen CivicOps to review the request.`,html:civicopsEmail({title:notification.title,body:notification.body,actionUrl:process.env.NEXT_PUBLIC_SITE_URL?new URL('/collaboration',process.env.NEXT_PUBLIC_SITE_URL).toString():undefined})}),cache:'no-store'});
     if(!response.ok)throw Error(`Resend HTTP ${response.status}: ${(await response.text()).slice(0,160)}`);
     await rpc('civicops_finish_email',{p_id:item.id,p_sent:true});sent++;
    }catch(error){failed++;try{await rpc('civicops_finish_email',{p_id:item.id,p_sent:false,p_error:String(error.message||error).slice(0,400)});}catch{ /* Retriable processing lease. */ }}

@@ -1,3 +1,4 @@
+import {civicopsEmail} from '../../../../lib/civicops-email';
 import {NextResponse} from 'next/server';
 import {createClient} from '@supabase/supabase-js';
 export const runtime='nodejs';
@@ -111,7 +112,7 @@ export async function PATCH(request){
    const redirectTo=new URL('/auth/activate?flow=invite',process.env.NEXT_PUBLIC_SITE_URL||new URL(request.url).origin).toString();
    const {data:link,error:linkError}=await c.admin.auth.admin.generateLink({type:'invite',email:inv.email,options:{redirectTo}});
    if(linkError||!link?.properties?.action_link)return respond({error:linkError?.message||'Could not create invite link'},500);
-   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({from:process.env.CIVICOPS_EMAIL_FROM,to:[inv.email],subject:'Your CivicOps invitation',text:`You have been invited to CivicOps. Accept your invitation here:\n\n${link.properties.action_link}\n\nIf you did not expect this invitation, ignore this email.`})});
+   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({from:process.env.CIVICOPS_EMAIL_FROM,to:[inv.email],subject:'Your CivicOps invitation',text:`You have been invited to CivicOps. Accept your invitation here:\n\n${link.properties.action_link}\n\nIf you did not expect this invitation, ignore this email.`,html:civicopsEmail({title:'Your CivicOps invitation',body:'You have been invited to CivicOps. Activate your employee account using the secure link below.',actionUrl:link.properties.action_link,actionLabel:'Activate my account'})})});
    if(!response.ok)return respond({error:'Email provider could not send invitation'},502);
    return respond({ok:true,message:'Invitation resent'});
   }
