@@ -27,6 +27,13 @@ export default function Activate(){
     const hash=new URLSearchParams(window.location.hash.replace(/^#/,''));
     const linkError=params.get('error_description')||hash.get('error_description');
     if(linkError)throw Error(linkError.replace(/\+/g,' '));
+    // Recovery links using the implicit flow carry credentials in the URL hash.
+    // Explicitly establish the session before displaying password creation.
+    if(hash.get('access_token')&&hash.get('refresh_token')){
+     const {error:tokenError}=await db.auth.setSession({access_token:hash.get('access_token'),refresh_token:hash.get('refresh_token')});
+     if(tokenError)throw tokenError;
+     window.history.replaceState(null,'',window.location.pathname+'?flow='+encodeURIComponent(hash.get('type')||params.get('flow')||'recovery'));
+    }
     const tokenHash=params.get('token_hash');
     const type=params.get('type');
     if(tokenHash&&['invite','recovery'].includes(type)){

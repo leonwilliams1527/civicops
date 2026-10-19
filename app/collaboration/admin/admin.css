@@ -7,3 +7,5 @@
 .co-admin .invite-form label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}
 .co-admin .invite-form input,.co-admin .invite-form select{width:100%;box-sizing:border-box;padding:10px;border:1px solid #b9cfe7;border-radius:8px;background:white}
 .co-admin .invite-form button{align-self:end;min-height:40px}
+
+.co-admin .department-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px;margin:18px 0}.co-admin .department-card{border:1px solid #d5e2f0;border-radius:12px;padding:16px;background:#f8fbff}.co-admin .department-card h3{margin:0 0 12px}.co-admin .department-card p{margin:8px 0;font-size:13px}.co-admin .department-note{font-size:12px;color:#526b87}.co-admin #civicops-employees{margin-top:24px}.co-admin #civicops-employees select{margin-left:8px;padding:8px;border-radius:7px;border:1px solid #b5cce6;background:white}

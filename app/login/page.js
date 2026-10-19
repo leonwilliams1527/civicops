@@ -1,5 +1,5 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {createClient} from '@supabase/supabase-js';
 import '../auth/activate/activate.css';
@@ -16,7 +16,20 @@ const proxiedFetch=async(input,init)=>{
 };
 const db=url&&key?createClient(url,key,{global:{fetch:proxiedFetch}}):null;
 export default function Login(){
- const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[checking,setChecking]=useState(true);
+ useEffect(()=>{
+  // Supabase may fall back to Site URL (/login) despite redirectTo. Preserve the
+  // original one-time URL fragment and hand it to the password activation route.
+  const hash=new URLSearchParams(window.location.hash.slice(1));
+  const query=new URLSearchParams(window.location.search);
+  const recovery=['recovery','invite'].includes(hash.get('type')) || ['recovery','invite'].includes(query.get('type'));
+  const hasToken=!!(hash.get('access_token')||hash.get('error')||query.get('token_hash')||query.get('code'));
+  if(recovery||hasToken){
+   window.location.replace('/auth/activate?flow='+encodeURIComponent(hash.get('type')||query.get('type')||'recovery')+(query.get('token_hash')||query.get('code')?'&'+query.toString():'')+window.location.hash);
+   return;
+  }
+  setChecking(false);
+ },[]);
  async function submit(e){
   e.preventDefault();setError('');setBusy(true);
   try{
@@ -27,6 +40,7 @@ export default function Login(){
   }catch(err){setError(err.message||'Sign-in failed.');}
   finally{setBusy(false);}
  }
+ if(checking)return <main className="activate-page"><section className="activate-card"><h1>Checking sign-in link…</h1></section></main>;
  return <main className="activate-page"><section className="activate-card">
   <div className="activate-brand">CIVICOPS</div><h1>Sign in to CivicOps</h1>
   <p>Use your organization email and password.</p>
