@@ -16,7 +16,7 @@ export default function Admin(){
   if(!session?.access_token)throw Error('Sign in again');
   const response=await fetch('/api/admin/invitations',{method,headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:method==='GET'?undefined:JSON.stringify(payload),cache:'no-store'});
   const result=await response.json();
-  if(!response.ok)throw Error(result.error||'Invitation request failed');
+  if(!response.ok)throw Error((result.error||'Invitation request failed')+(result.code?' ('+result.code+')':''));
   return result;
  }
  async function refreshInvites(){

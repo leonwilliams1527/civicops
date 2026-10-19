@@ -19,13 +19,25 @@ async function context(request){
  const {data:{user},error}=await auth.auth.getUser(token);
  if(error||!user)return {error:'Invalid session',status:401};
  const {data:membership,error:memberError}=await admin.from('memberships').select('department,role').eq('user_id',user.id).maybeSingle();
- if(memberError||membership?.role!=='admin')return {error:'Administrator access required',status:403};
- const {data:superRow}=await admin.from('civicops_super_admins').select('user_id').eq('user_id',user.id).maybeSingle();
+ if(memberError){
+  console.error('CivicOps invitations membership query failed',{code:memberError.code,message:memberError.message});
+  return {error:'Membership lookup failed. Check the server Supabase service-role key and project URL.',code:memberError.code||'membership_query_error',status:503};
+ }
+ if(!membership){
+  console.error('CivicOps invitations: no membership for authenticated user',{userId:user.id});
+  return {error:'No membership found for this signed-in account. Verify you are using the owner account.',code:'membership_missing',status:403};
+ }
+ if(membership.role!=='admin')return {error:'Administrator access required',code:'not_admin',status:403};
+ const {data:superRow,error:superError}=await admin.from('civicops_super_admins').select('user_id').eq('user_id',user.id).maybeSingle();
+ if(superError){
+  console.error('CivicOps invitations super-admin lookup failed',{code:superError.code,message:superError.message});
+  return {error:'Super Admin lookup failed. Verify the Phase 22.1 migration and server credentials.',code:superError.code||'super_admin_query_error',status:503};
+ }
  return {admin,user,membership,isSuper:!!superRow};
 }
 export async function GET(request){
  try{
-  const c=await context(request);if(c.error)return respond({error:c.error},c.status);
+  const c=await context(request);if(c.error)return respond({error:c.error,code:c.code||'access_error'},c.status);
   let query=c.admin.from('civicops_employee_invitations').select('id,email,full_name,department,role,status,created_at,accepted_at').order('created_at',{ascending:false}).limit(150);
   if(!c.isSuper)query=query.eq('department',c.membership.department);
   const {data,error}=await query;
@@ -45,7 +57,7 @@ export async function GET(request){
 }
 export async function POST(request){
  try{
-  const c=await context(request);if(c.error)return respond({error:c.error},c.status);
+  const c=await context(request);if(c.error)return respond({error:c.error,code:c.code||'access_error'},c.status);
   const body=await request.json();
   const email=String(body.email||'').trim().toLowerCase();
   const fullName=String(body.full_name||'').trim();
@@ -88,7 +100,7 @@ export async function POST(request){
 }
 export async function PATCH(request){
  try{
-  const c=await context(request);if(c.error)return respond({error:c.error},c.status);
+  const c=await context(request);if(c.error)return respond({error:c.error,code:c.code||'access_error'},c.status);
   const {id,action}=await request.json();
   if(!['revoke','resend'].includes(action)||!id)return respond({error:'Invalid action'},400);
   const {data:inv,error}=await c.admin.from('civicops_employee_invitations').select('*').eq('id',id).maybeSingle();
