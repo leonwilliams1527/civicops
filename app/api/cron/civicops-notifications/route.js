@@ -14,7 +14,8 @@ export async function GET(request){
  try{
   // This endpoint can run once daily from Vercel Cron; email delivery is a separate opt-in.
   const deadlines=await rpc('civicops_process_deadlines',{});
-  if(process.env.CIVICOPS_EMAIL_ENABLED!=='true')return json({ok:true,deadlines,email:'disabled'});
+  const milestones=await rpc('civicops_process_milestone_deadlines',{});
+  if(process.env.CIVICOPS_EMAIL_ENABLED!=='true')return json({ok:true,deadlines,milestones,email:'disabled'});
   const resend=process.env.RESEND_API_KEY,from=process.env.CIVICOPS_EMAIL_FROM;
   if(!resend||!from)return json({error:'Email enabled without RESEND_API_KEY and CIVICOPS_EMAIL_FROM'},503);
   const batch=await rpc('civicops_claim_email_batch',{p_limit:10});
@@ -38,6 +39,6 @@ export async function GET(request){
     await rpc('civicops_finish_email',{p_id:item.id,p_sent:true});sent++;
    }catch(error){failed++;try{await rpc('civicops_finish_email',{p_id:item.id,p_sent:false,p_error:String(error.message||error).slice(0,400)});}catch{ /* Retriable processing lease. */ }}
   }
-  return json({ok:true,deadlines,email:{processed:batch.length,sent,failed}});
+  return json({ok:true,deadlines,milestones,email:{processed:batch.length,sent,failed}});
  }catch(error){return json({ok:false,error:String(error.message||error).slice(0,250)},500);}
 }
