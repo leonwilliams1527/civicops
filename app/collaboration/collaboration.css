@@ -136,3 +136,29 @@
 .co-brand-mark{display:inline-flex;align-items:center;justify-content:center;width:31px;height:31px;flex:0 0 31px;border-radius:9px;background:#1469b7;color:#fff;font-size:20px;font-weight:800;box-shadow:0 3px 12px rgba(20,105,183,.16)}
 .co-demo-note{margin:0 0 12px;padding:11px 14px;border:1px solid #c4dbed;background:#eff7ff;border-radius:10px;color:#254c70;font-size:13px;line-height:1.5}
 .co-demo-note button{margin-left:8px;border:0;background:none;color:#095d9d;text-decoration:underline;font-weight:700;cursor:pointer}
+
+
+/* PHASE 26 — CivicOps visual system. Presentation-inspired UI; original application logic preserved. */
+:root{--c26-navy:#112c4b;--c26-ink:#1a334d;--c26-blue:#1473c8;--c26-bg:#f3f6fb;--c26-border:#e0e8f1;--c26-muted:#64768c}
+html{background:var(--c26-bg)}body{background:var(--c26-bg);color:var(--c26-ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.co-page{max-width:none!important;margin:0 0 0 256px!important;padding:30px clamp(20px,3vw,52px) 72px!important;min-height:100vh;background:var(--c26-bg)}
+.co-unified-nav{position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:256px!important;height:100vh!important;z-index:90!important;overflow-y:auto!important;display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-start!important;gap:7px!important;padding:112px 13px 24px!important;background:#112c4b!important;border:0!important;border-radius:0!important;box-shadow:4px 0 28px #142f4d12!important}
+.co-unified-nav:before{content:'C  CIVICOPS';position:absolute;top:29px;left:22px;font-size:22px;letter-spacing:1.1px;font-weight:850;color:#fff}
+.co-unified-nav a,.co-unified-nav>button,.co-unified-nav .co-nav-bell>button{display:block!important;width:100%!important;text-align:left!important;background:transparent!important;color:#d8e6f4!important;border:0!important;border-radius:10px!important;padding:13px 16px!important;font-size:13px!important;font-weight:650!important;white-space:normal!important;text-decoration:none!important}
+.co-unified-nav a:hover,.co-unified-nav>button:hover,.co-unified-nav .co-nav-bell>button:hover{background:#244765!important;color:white!important}
+.co-unified-nav a[aria-current='page']{background:#2376bd!important;color:#fff!important}
+.co-nav-bell{width:100%!important;position:relative!important}.co-bell-panel{position:fixed!important;left:264px!important;top:90px!important;max-width:420px!important;z-index:100!important}
+.co-header{padding:8px 0 28px!important;margin-bottom:20px!important;border-bottom:1px solid var(--c26-border)}.co-header h1{font-size:clamp(27px,2.4vw,38px)!important;font-weight:800!important;color:#163251!important;letter-spacing:-1.2px!important}.co-header p{font-size:14px!important}.co-brand-lockup .co-eyebrow{color:#4281af!important}
+.co-card,.rp-card,.mg-card,.ad-card,.pw-card{background:white!important;border:1px solid var(--c26-border)!important;border-radius:15px!important;box-shadow:0 6px 26px rgba(20,50,85,.035)!important}
+.co-primary,.co-page button.co-primary{background:#1474c8!important;border:1px solid #1474c8!important;border-radius:9px!important;box-shadow:0 3px 8px #1474c822!important}.co-primary:hover{background:#0e5da7!important}
+.co-page input,.co-page select,.co-page textarea{border-color:#d8e2ee!important;border-radius:9px!important;background:#fff!important}
+.co-request{border-radius:11px!important}.co-request.active{background:#eff7ff!important;border-color:#80b7e8!important}
+.co-identity{background:#fff!important;border:1px solid var(--c26-border)!important;border-radius:13px!important}
+.co-status{font-weight:750!important}.co-toolbar h2{color:#173550!important}
+/* Secondary routes: keep their functional content, unify the same visual language. */
+.rp,.mg,.ad,.pw,.ws,.admin-page,.management-page{background:var(--c26-bg)!important;min-height:100vh;color:var(--c26-ink)!important}
+.rp-card,.mg-card,.ad-card,.pw-card{border-radius:15px!important}
+.rp h1,.mg h1,.ad h1,.pw h1{color:#173550!important;letter-spacing:-.7px}
+@media(min-width:1101px){.rp,.mg,.ad,.pw{max-width:none!important;margin-left:256px!important;padding-left:clamp(24px,3vw,52px)!important;padding-right:clamp(24px,3vw,52px)!important}}
+@media(max-width:1100px){.co-page{margin-left:0!important;padding:22px 18px 55px!important}.co-unified-nav{position:relative!important;top:auto!important;left:auto!important;bottom:auto!important;width:100%!important;height:auto!important;max-height:none!important;padding:15px!important;background:#112c4b!important;display:none!important}.co-unified-nav.co-mobile-nav-open{display:flex!important}.co-unified-nav:before{display:none!important}.co-mobile-nav-bar{display:flex!important}.co-bell-panel{position:absolute!important;left:0!important;top:40px!important;max-width:calc(100vw - 40px)!important}}
+@media(max-width:650px){.co-page{padding:15px 12px 42px!important}.co-header{gap:8px!important}.co-header h1{font-size:27px!important}}

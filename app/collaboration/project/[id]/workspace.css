@@ -14,3 +14,7 @@
  button{min-height:42px}
  .department-grid,.invite-form{grid-template-columns:minmax(0,1fr)!important}
 }
+
+/* Phase 26 shared finish */
+:where(section,article)[class*="card"]{border-radius:15px;box-shadow:0 5px 24px rgba(20,50,85,.04)}
+:where(button,a)[class*="primary"]{border-radius:9px}

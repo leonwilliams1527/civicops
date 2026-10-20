@@ -91,3 +91,7 @@
  .co-admin #civicops-employees label{display:grid;grid-template-columns:1fr;align-items:stretch;gap:6px}
  .co-admin #civicops-employees select{width:100%;margin:0;min-height:44px}
 }
+
+/* Phase 26 shared finish */
+:where(section,article)[class*="card"]{border-radius:15px;box-shadow:0 5px 24px rgba(20,50,85,.04)}
+:where(button,a)[class*="primary"]{border-radius:9px}
