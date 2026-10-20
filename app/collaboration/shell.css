@@ -1,0 +1,12 @@
+.civic-shell{--civic-sidebar-width:248px;display:flex;min-height:100vh;background:#f2f6fb;color:#193650}
+.civic-shell-sidebar{position:sticky;top:0;height:100vh;flex:0 0 var(--civic-sidebar-width);width:var(--civic-sidebar-width);display:flex;flex-direction:column;padding:26px 14px 16px;background:#102b48;color:#e8f1fb;z-index:80}
+.civic-shell-brand{display:flex;gap:12px;align-items:center;color:white;text-decoration:none;padding:8px 12px 32px}
+.civic-shell-brand strong,.civic-shell-brand small{display:block}.civic-shell-brand strong{font-size:21px;letter-spacing:-.5px}.civic-shell-brand small{font-size:11px;color:#b3c5d9;margin-top:4px}
+.civic-shell-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:11px;background:#2e8dd5;color:white;font-size:24px;font-weight:800}
+.civic-shell-group-title{font-size:10px;font-weight:800;letter-spacing:1.5px;color:#8ca8c5;padding:6px 15px 12px}
+.civic-shell-sidebar nav{display:grid;gap:5px}.civic-shell-nav-link{display:flex;align-items:center;gap:12px;border-radius:9px;padding:13px 14px;color:#d1e0ef;text-decoration:none;font-size:13px;font-weight:650}.civic-shell-nav-link span{font-size:18px;width:23px;text-align:center}.civic-shell-nav-link:hover{background:#234563;color:white}.civic-shell-nav-link.is-active{background:#226eb1;color:white}
+.civic-shell-footer{margin-top:auto;padding:20px 13px 4px;color:#8fa9c3;font-size:11px}
+.civic-shell-content{flex:1;min-width:0;max-width:calc(100% - var(--civic-sidebar-width));overflow-x:hidden}
+.civic-shell-content>main{max-width:none}.civic-shell-content .co-unified-nav,.civic-shell-content .co-mobile-nav-bar{display:none!important}
+.civic-shell-mobile-toggle{display:none}.civic-shell-backdrop{display:none}
+@media(max-width:850px){.civic-shell{display:block}.civic-shell-content{max-width:100%;padding-top:54px}.civic-shell-mobile-toggle{display:block;position:fixed;top:0;left:0;right:0;height:54px;background:#102b48;color:#fff;border:0;text-align:left;padding:0 20px;font-weight:750;z-index:79}.civic-shell-sidebar{position:fixed;top:0;left:0;transform:translateX(-105%);transition:transform .2s ease;box-shadow:6px 0 20px #102b4822}.civic-shell-sidebar.is-open{transform:translateX(0)}.civic-shell-backdrop{display:block;position:fixed;inset:0;border:0;background:#06182988;z-index:79}}
