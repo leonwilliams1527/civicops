@@ -12,6 +12,7 @@ const sections=[
   ['/collaboration/bmap','BMAP & GIS','⌖'],
   ['/collaboration/management','Management','◫'],
   ['/collaboration/admin','Administration','⚙'],
+  ['/collaboration/access-management','User Access Management','♙'],
 ];
 export default function CollaborationLayout({children}){
   const path=usePathname()||'/collaboration';
