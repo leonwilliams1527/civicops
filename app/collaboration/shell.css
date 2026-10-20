@@ -10,3 +10,12 @@
 .civic-shell-content>main{max-width:none}.civic-shell-content .co-unified-nav,.civic-shell-content .co-mobile-nav-bar{display:none!important}
 .civic-shell-mobile-toggle{display:none}.civic-shell-backdrop{display:none}
 @media(max-width:850px){.civic-shell{display:block}.civic-shell-content{max-width:100%;padding-top:54px}.civic-shell-mobile-toggle{display:block;position:fixed;top:0;left:0;right:0;height:54px;background:#102b48;color:#fff;border:0;text-align:left;padding:0 20px;font-weight:750;z-index:79}.civic-shell-sidebar{position:fixed;top:0;left:0;transform:translateX(-105%);transition:transform .2s ease;box-shadow:6px 0 20px #102b4822}.civic-shell-sidebar.is-open{transform:translateX(0)}.civic-shell-backdrop{display:block;position:fixed;inset:0;border:0;background:#06182988;z-index:79}}
+
+/* Phase 27.1: one sidebar only; content begins immediately beside it. */
+@media(min-width:851px){
+ .civic-shell-content .co-page{margin-left:0!important;width:100%!important;max-width:none!important;padding:28px clamp(18px,2.2vw,38px) 60px!important}
+ .civic-shell-content :is(.rp,.mg,.ad,.pw){margin-left:0!important;max-width:none!important;width:100%!important;padding-left:clamp(18px,2.2vw,38px)!important;padding-right:clamp(18px,2.2vw,38px)!important}
+ .civic-shell-content .co-bell-panel{left:auto!important}
+}
+.civic-shell-content .bm-page{max-width:none;margin:0;padding:28px clamp(18px,2.2vw,38px)}
+@media(max-width:850px){.civic-shell-content .bm-page{padding:18px 14px}}
