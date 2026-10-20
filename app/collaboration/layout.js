@@ -9,6 +9,7 @@ const sections=[
   ['/collaboration/projects','Projects & Requests','▤'],
   ['/collaboration/documents','Data & Documents','▣'],
   ['/collaboration/reports','Reports','▥'],
+  ['/collaboration/bmap','BMAP & GIS','⌖'],
   ['/collaboration/management','Management','◫'],
   ['/collaboration/admin','Administration','⚙'],
 ];
