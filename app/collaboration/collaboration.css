@@ -130,3 +130,9 @@
  .co-attachment-upload>.co-primary{width:100%}
  .co-activity-head{flex-wrap:wrap}
 }
+
+/* Phase 25.1: self-contained brand mark; no external image request */
+.co-brand-lockup{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.co-brand-mark{display:inline-flex;align-items:center;justify-content:center;width:31px;height:31px;flex:0 0 31px;border-radius:9px;background:#1469b7;color:#fff;font-size:20px;font-weight:800;box-shadow:0 3px 12px rgba(20,105,183,.16)}
+.co-demo-note{margin:0 0 12px;padding:11px 14px;border:1px solid #c4dbed;background:#eff7ff;border-radius:10px;color:#254c70;font-size:13px;line-height:1.5}
+.co-demo-note button{margin-left:8px;border:0;background:none;color:#095d9d;text-decoration:underline;font-weight:700;cursor:pointer}
