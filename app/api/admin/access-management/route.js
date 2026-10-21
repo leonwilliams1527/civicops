@@ -18,7 +18,7 @@ export async function GET(request){
    admin.from('civicops_super_admins').select('user_id').eq('user_id',user.id).maybeSingle(),
    admin.from('civicops_platform_owner').select('user_id').eq('user_id',user.id).maybeSingle()
   ]);
-  if(memberError||superError||ownerError)return reply({error:'Unable to verify access safely'},503);
+  if(memberError||superError||ownerError){const failures=[['memberships',memberError],['civicops_super_admins',superError],['civicops_platform_owner',ownerError]].filter(([,e])=>e).map(([table,e])=>({table,code:e.code||'unknown'}));console.error('Access verification failed',failures);return reply({error:'Unable to verify access safely',code:'access_verification_failed',checks:failures},503);}
   const isOwner=!!ownerRow,isSuper=!!superRow;
   if(!isOwner&&!isSuper&&membership?.role!=='admin')return reply({error:'Administrator access required'},403);
   let membersQuery=admin.from('memberships').select('user_id,department,role').order('department');
