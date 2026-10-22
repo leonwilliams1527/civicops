@@ -49,3 +49,19 @@ create policy enterprise_actions_read on public.enterprise_actions for select to
 create policy enterprise_actions_write on public.enterprise_actions for all to authenticated using (public.enterprise_has_access(organization_id,true)) with check (public.enterprise_has_access(organization_id,true));
 -- Provision organizations and manager membership only from a trusted, audited administrator process.
 -- No browser-accessible organization or membership creation policies are provided.
+-- Phase 30: authenticated API permissions.
+-- RLS policies continue to restrict access by organization.
+
+GRANT USAGE ON SCHEMA public TO authenticated;
+
+GRANT SELECT ON TABLE
+  public.enterprise_organizations,
+  public.enterprise_members,
+  public.enterprise_facilities,
+  public.enterprise_actions
+TO authenticated;
+
+GRANT INSERT, UPDATE, DELETE ON TABLE
+  public.enterprise_facilities,
+  public.enterprise_actions
+TO authenticated;
