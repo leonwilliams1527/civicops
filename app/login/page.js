@@ -36,7 +36,14 @@ export default function Login(){
    if(!db)throw Error('CivicOps authentication is not configured.');
    const {error}=await db.auth.signInWithPassword({email:email.trim(),password});
    if(error)throw error;
-   window.location.assign('/collaboration');
+   const isEnterprisePreview =
+  process.env.NEXT_PUBLIC_ENTERPRISE_PREVIEW === 'true';
+
+window.location.assign(
+  isEnterprisePreview
+    ? '/collaboration/enterprise'
+    : '/collaboration'
+);
   }catch(err){setError(err.message||'Sign-in failed.');}
   finally{setBusy(false);}
  }
