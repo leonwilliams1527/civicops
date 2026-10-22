@@ -1,156 +1,230 @@
+
 'use client';
-import {useEffect,useMemo,useState,useRef} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {createClient} from '@supabase/supabase-js';
 import Link from 'next/link';
-import './collaboration.css';
-const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const proxiedFetch=async(input,init)=>{const original=typeof input==='string'?input:input.url;const parsed=new URL(original);if(parsed.hostname===new URL(url).hostname&&/^\/(auth|rest|storage)\/v1\//.test(parsed.pathname)){const proxyUrl='/api/supabase-proxy?path='+encodeURIComponent(parsed.pathname)+(parsed.search?'&'+parsed.search.slice(1):'');const response=await fetch(proxyUrl,init);const ct=response.headers.get('content-type')||'';if(!ct.includes('json')&&!ct.includes('text/plain')&&!response.ok)throw new Error('CivicOps API returned HTTP '+response.status+'. Check the Vercel proxy route.');return response;}return fetch(input,init);};
-const db=url&&key?createClient(url,key,{global:{fetch:proxiedFetch}}):null;
-const FILE_LIMIT=10*1024*1024;
-const ALLOWED_EXT=['xlsx','xls','csv','pdf','docx','doc'];
-const fileSize=n=>n<1024*1024?(n/1024).toFixed(0)+' KB':(n/1024/1024).toFixed(1)+' MB';
-const isQaNamedRequest=r=>/^(?:test(?:\b|[ _-])|last[ _-]?test\b|fix[ _-]?it\b|qa[ _-]?\d+\b)/i.test((r.title||'').trim());
-const DEPTS=['Water Quality','GIS','Permitting','Engineering','Project Management','Finance'];
-const date=v=>v?new Date(v).toLocaleString(undefined,{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'—';
-const due=v=>v?new Date(v+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'—';
-const statusClass=s=>s==='Completed'?'done':s==='In Progress'?'progress':'open';
-const PRIORITIES=['Low','Normal','High','Urgent'];
-const dayKey=()=>new Date().toLocaleDateString('en-CA');
-const isOverdue=r=>r.status!=='Completed'&&Boolean(r.due_date)&&r.due_date<dayKey();
-const needsAttention=r=>r.status!=='Completed'&&(isOverdue(r)||r.priority==='Urgent'||(r.priority==='High'&&!r.assigned_to));
-const isSoon=r=>r.status!=='Completed'&&Boolean(r.due_date)&&r.due_date>=dayKey()&&r.due_date<=new Date(Date.now()+3*86400000).toLocaleDateString('en-CA');
-export default function Collaboration({view="dashboard"}){
- const [connection,setConnection]=useState('Checking server connection…'),[session,setSession]=useState(null),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[mode,setMode]=useState('signin'),[msg,setMsg]=useState(''),[error,setError]=useState(false),[loading,setLoading]=useState(false);
- const [membership,setMembership]=useState(null),[requests,setRequests]=useState([]),[activities,setActivities]=useState([]),[profiles,setProfiles]=useState({}),[fullName,setFullName]=useState(''),[designation,setDesignation]=useState(''),[savingProfile,setSavingProfile]=useState(false),[profileLoaded,setProfileLoaded]=useState(false);
- const [files,setFiles]=useState([]),[fileBusy,setFileBusy]=useState(false),[fileScope,setFileScope]=useState('department'),[fileSelected,setFileSelected]=useState(null),[attachmentSelected,setAttachmentSelected]=useState(null),[profileView,setProfileView]=useState(false);
- const [notes,setNotes]=useState({}),[activeId,setActiveId]=useState(null),[filter,setFilter]=useState('All'),[search,setSearch]=useState(''),[showForm,setShowForm]=useState(false),[showOlder,setShowOlder]=useState(false),[form,setForm]=useState({project_id:'BMAP-027',title:'',assigned_department:'Permitting',due_date:'',details:''});
- const [avatarFile,setAvatarFile]=useState(null),[avatarPreview,setAvatarPreview]=useState(''),[avatarUrls,setAvatarUrls]=useState({}),[avatarBusy,setAvatarBusy]=useState(false),[workspaceTab,setWorkspaceTab]=useState('dashboard'),[queue,setQueue]=useState('All work'),[sortBy,setSortBy]=useState('Due date'),[teamMembers,setTeamMembers]=useState([]),[taskBusy,setTaskBusy]=useState(false);
- const [zoom,setZoom]=useState(1),[cropX,setCropX]=useState(50),[cropY,setCropY]=useState(50),[cropBusy,setCropBusy]=useState(false);
- const [demoView,setDemoView]=useState(false);const [recipientTeam,setRecipientTeam]=useState([]);const [mobileMenuOpen,setMobileMenuOpen]=useState(false);const [alerts,setAlerts]=useState([]),[bellOpen,setBellOpen]=useState(false),[notificationSettings,setNotificationSettings]=useState({email_enabled:true,desktop_enabled:false}),[notificationReady,setNotificationReady]=useState(false);
- const cropCanvas=useRef(null),lastAlert=useRef(null);
- useEffect(()=>{setDemoView(new URLSearchParams(window.location.search).get('demo')==='1');},[]);
- const user=session?.user;
- const profileInitializedFor=useRef(null);
- const profileEditing=useRef(false);
- const profileSaveInProgress=useRef(false);
- function notify(text,isError=false){setMsg(text);setError(isError);}
- useEffect(()=>{if(!msg||error)return;const timer=setTimeout(()=>setMsg(''),5000);return()=>clearTimeout(timer);},[msg,error]);
- async function refresh(uid=user?.id){if(!db||!uid)return;const [m,r,a]=await Promise.all([db.from('memberships').select('department,role').eq('user_id',uid).maybeSingle(),db.from('update_requests').select('*').order('created_at',{ascending:false}),db.from('request_activity').select('*').order('created_at',{ascending:false}).limit(250)]);if(m.error)notify('Membership: '+m.error.message,true);else {setMembership(m.data);if(m.data?.department){const tm=await db.from('memberships').select('user_id,department,role').eq('department',m.data.department);if(!tm.error){setTeamMembers(tm.data||[]);const ids=tm.data?.map(x=>x.user_id)||[];if(ids.length){const names=await db.from('user_profiles').select('user_id,full_name,designation,avatar_path').in('user_id',ids);if(!names.error)setProfiles(old=>({...old,...Object.fromEntries((names.data||[]).map(x=>[x.user_id,x]))}));}}}}if(r.error)notify('Requests: '+r.error.message,true);else {setRequests(r.data||[]);setActiveId(current=>{const requested=typeof window!=='undefined'&&view==='projects'?new URLSearchParams(window.location.search).get('request'):null;return requested&&r.data?.some(x=>x.id===requested)?requested:current&&r.data?.some(x=>x.id===current)?current:r.data?.[0]?.id||null;});}if(a.error)notify('Activity: '+a.error.message,true);else setActivities(a.data||[]);
- await loadFiles(uid);await loadNotifications(uid);
- const ids=[...new Set([uid,...teamMembers.map(x=>x.user_id),...(a.data||[]).map(x=>x.actor_id),...(r.data||[]).map(x=>x.assigned_to),...(r.data||[]).map(x=>x.created_by)].filter(Boolean))];if(ids.length){const p=await db.from('user_profiles').select('user_id,full_name,designation,avatar_path').in('user_id',ids);if(p.error)notify('Profiles: '+p.error.message,true);else {setProfiles(old=>({...old,...Object.fromEntries((p.data||[]).map(x=>[x.user_id,x]))}));const own=(p.data||[]).find(x=>x.user_id===uid);if(profileInitializedFor.current!==uid && !profileEditing.current && !profileSaveInProgress.current){profileInitializedFor.current=uid;setFullName(own?.full_name||'');setDesignation(own?.designation||'');setProfileLoaded(true);}}}}
- async function loadRecipientTeam(department){
-  if(!db||!department){setRecipientTeam([]);return;}
-  const result=await db.from('memberships').select('user_id,department,role').eq('department',department);
-  if(result.error){notify('Could not load receiving department: '+result.error.message,true);return;}
-  setRecipientTeam(result.data||[]);
-  const ids=(result.data||[]).map(x=>x.user_id);
-  if(ids.length){const names=await db.from('user_profiles').select('user_id,full_name,designation,avatar_path').in('user_id',ids);
-    if(!names.error)setProfiles(old=>({...old,...Object.fromEntries((names.data||[]).map(x=>[x.user_id,x]))}));}
+import './enterprise.css';
+
+const url=process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const proxy=async(input,init)=>{
+ const raw=typeof input==='string'?input:input.url;
+ const parsed=new URL(raw);
+ if(url&&parsed.hostname===new URL(url).hostname&&/^\/(auth|rest|storage)\/v1\//.test(parsed.pathname)){
+  return fetch('/api/supabase-proxy?path='+encodeURIComponent(parsed.pathname)+(parsed.search?'&'+parsed.search.slice(1):''),init);
  }
- useEffect(()=>{if(user&&membership&&view==='projects'&&activeId){
-   const req=requests.find(x=>x.id===activeId);if(req)loadRecipientTeam(req.assigned_department);
- }},[user?.id,membership?.department,activeId,view,requests.map(r=>r.id+':'+r.assigned_department).join('|')]);
- async function loadFiles(uid=user?.id){if(!uid||!db)return;const result=await db.from('department_files').select('*').order('created_at',{ascending:false}).limit(150);if(result.error){notify('Files: '+result.error.message,true);return;}setFiles(result.data||[]);}
- async function loadNotifications(uid){
-  if(!db||!uid)return;
-  const [a,p]=await Promise.all([db.from('notifications').select('id,title,body,request_id,milestone_id,created_at,read_at,event_type').eq('recipient_id',uid).order('created_at',{ascending:false}).limit(60),db.from('notification_preferences').select('email_enabled,desktop_enabled').eq('user_id',uid).maybeSingle()]);
-  if(!a.error){setAlerts(a.data||[]);if(lastAlert.current&&a.data?.[0]?.id!==lastAlert.current&&notificationSettings.desktop_enabled&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
-   const incoming=(a.data||[]).filter(x=>!x.read_at&&x.id!==lastAlert.current);if(incoming.length&&document.visibilityState==='visible'){new Notification('CivicOps: '+incoming[0].title,{body:incoming[0].body||''});}
-  }lastAlert.current=a.data?.[0]?.id||null;}
-  if(!p.error&&p.data){setNotificationSettings(p.data);}setNotificationReady(true);
+ return fetch(input,init);
+};
+
+const db=url&&key?createClient(url,key,{global:{fetch:proxy}}):null;
+
+export default function Enterprise(){
+ const [user,setUser]=useState(null);
+ const [orgs,setOrgs]=useState([]);
+ const [orgId,setOrgId]=useState('');
+ const [facilities,setFacilities]=useState([]);
+ const [actions,setActions]=useState([]);
+ const [error,setError]=useState('');
+ const [busy,setBusy]=useState(true);
+ const [filter,setFilter]=useState('all');
+ const [selected,setSelected]=useState('');
+ const [adding,setAdding]=useState(false);
+ const [saving,setSaving]=useState(false);
+
+ useEffect(()=>{
+  if(!db){
+   setError('Supabase configuration is missing');
+   setBusy(false);
+   return;
+  }
+  let active=true;
+  db.auth.getUser().then(async({data,error:e})=>{
+   if(!active)return;
+   if(e||!data.user){
+    setBusy(false);
+    return;
+   }
+   setUser(data.user);
+   const r=await db.from('enterprise_organizations')
+    .select('id,name,slug')
+    .order('name');
+   if(!active)return;
+   if(r.error)setError(r.error.message);
+   else{
+    setOrgs(r.data||[]);
+    setOrgId(r.data?.[0]?.id||'');
+   }
+   setBusy(false);
+  });
+  return()=>{active=false};
+ },[]);
+
+ useEffect(()=>{
+  if(!db||!orgId)return;
+  let active=true;
+  setBusy(true);
+  Promise.all([
+   db.from('enterprise_facilities')
+    .select('*')
+    .eq('organization_id',orgId)
+    .order('name'),
+   db.from('enterprise_actions')
+    .select('*')
+    .eq('organization_id',orgId)
+  ]).then(([f,a])=>{
+   if(!active)return;
+   if(f.error||a.error){
+    setError(f.error?.message||a.error?.message);
+   }else{
+    setError('');
+    setFacilities(f.data||[]);
+    setActions(a.data||[]);
+   }
+   setBusy(false);
+  });
+  return()=>{active=false};
+ },[orgId]);
+
+ const visible=useMemo(
+  ()=>facilities.filter(f=>filter==='all'||f.status===filter),
+  [facilities,filter]
+ );
+ const chosen=facilities.find(f=>f.id===selected);
+ const activeActions=actions.filter(a=>a.facility_id===selected);
+
+ async function addFacility(e){
+  e.preventDefault();
+  const fd=new FormData(e.currentTarget);
+  const lat=fd.get('latitude');
+  const lng=fd.get('longitude');
+  if(Boolean(lat)!==Boolean(lng)){
+   setError('Enter both latitude and longitude, or neither.');
+   return;
+  }
+  setSaving(true);
+  setError('');
+  const payload={
+   organization_id:orgId,
+   name:String(fd.get('name')).trim(),
+   region:String(fd.get('region')).trim()||null,
+   address:String(fd.get('address')).trim()||null,
+   latitude:lat?Number(lat):null,
+   longitude:lng?Number(lng):null,
+   status:'operational'
+  };
+  const r=await db.from('enterprise_facilities')
+   .insert(payload).select('*').single();
+  setSaving(false);
+  if(r.error){
+   setError(r.error.message);
+   return;
+  }
+  setFacilities(v=>[...v,r.data].sort((a,b)=>a.name.localeCompare(b.name)));
+  setAdding(false);
+  setSelected(r.data.id);
  }
- async function markAlertRead(alert){const {error:err}=await db.from('notifications').update({read_at:new Date().toISOString()}).eq('id',alert.id).eq('recipient_id',user.id);if(err){notify('Could not mark notification as read: '+err.message,true);return;}setAlerts(xs=>xs.map(x=>x.id===alert.id?{...x,read_at:new Date().toISOString()}:x));if(alert.request_id){setBellOpen(false);window.location.assign('/collaboration/projects?request='+encodeURIComponent(alert.request_id));}else if(alert.milestone_id){setBellOpen(false);window.location.assign('/collaboration/management');}else{setBellOpen(false);}}
- async function saveNotificationSettings(next){if(!user)return;const {error:err}=await db.from('notification_preferences').upsert({user_id:user.id,...next},{onConflict:'user_id'});if(err){notify('Notification preferences not saved: '+err.message,true);return;}setNotificationSettings(next);notify('Notification preferences saved.');}
- async function toggleDesktop(){if(!('Notification' in window)){notify('This browser does not support desktop notifications.',true);return;}let enabled=!notificationSettings.desktop_enabled;if(enabled&&Notification.permission!=='granted'){const permission=await Notification.requestPermission();if(permission!=='granted'){notify('Desktop notification permission was not granted.',true);return;}}await saveNotificationSettings({...notificationSettings,desktop_enabled:enabled});}
- async function cropImage(file){const image=await createImageBitmap(file);const side=Math.min(image.width,image.height)/zoom;const sx=Math.max(0,Math.min(image.width-side,(image.width-side)*cropX/100));const sy=Math.max(0,Math.min(image.height-side,(image.height-side)*cropY/100));const canvas=document.createElement('canvas');canvas.width=384;canvas.height=384;const ctx=canvas.getContext('2d');ctx.drawImage(image,sx,sy,side,side,0,0,384,384);image.close?.();return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(new File([blob],'profile-photo.jpg',{type:'image/jpeg'})):reject(new Error('Unable to process image')),'image/jpeg',0.86));}
- async function uploadFile(e,requestIdOverride=null){e.preventDefault();const f=requestIdOverride?attachmentSelected:fileSelected;if(!f||!membership||!user)return;const ext=f.name.split('.').pop().toLowerCase();if(!ALLOWED_EXT.includes(ext)||f.size>FILE_LIMIT||!f.size){notify('Choose a nonempty Excel, CSV, PDF, or Word file up to 10 MB.',true);return;}const requestId=requestIdOverride||null;setFileBusy(true);const path=user.id+'/'+crypto.randomUUID()+'.'+ext;try{const up=await db.storage.from('department-files').upload(path,f,{upsert:false,contentType:f.type||'application/octet-stream'});if(up.error)throw up.error;const row=await db.from('department_files').insert({storage_path:path,original_name:f.name,file_size:f.size,content_type:f.type||null,department:membership.department,request_id:requestId,uploaded_by:user.id}).select().single();if(row.error){await db.storage.from('department-files').remove([path]);throw row.error;}notify(requestId?'Attachment added to request.':'File uploaded securely.');setFileSelected(null);setAttachmentSelected(null);e.target.reset();await loadFiles();}catch(err){notify('File upload failed: '+err.message,true);}finally{setFileBusy(false);}}
- async function downloadFile(item){try{const res=await db.storage.from('department-files').download(item.storage_path);if(res.error)throw res.error;const objectUrl=URL.createObjectURL(res.data);const a=document.createElement('a');a.href=objectUrl;a.download=item.original_name;a.style.display='none';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);}catch(err){notify('Download failed: '+err.message,true);}}
- useEffect(()=>{fetch('/api/supabase-health').then(r=>r.json()).then(x=>setConnection(x.ok?'Connected to Supabase':`Connection issue: ${x.error||'Unknown error'}`)).catch(()=>setConnection('Could not check connection'));},[]);
- useEffect(()=>{if(!db)return;db.auth.getSession().then(({data,error})=>{if(error)notify(error.message,true);setSession(data?.session||null)});const {data:{subscription}}=db.auth.onAuthStateChange((_event,s)=>setSession(s));return()=>subscription.unsubscribe();},[]);
- useEffect(()=>{profileInitializedFor.current=null;profileEditing.current=false;setProfileLoaded(false);setMembership(null);setRequests([]);setActivities([]);setProfiles({});setFiles([]);if(!user?.id)return;refresh(user.id);const timer=setInterval(()=>refresh(user.id),10000);return()=>clearInterval(timer);},[user?.id]);
- async function authenticate(e){e.preventDefault();setLoading(true);notify('');try{const result=await db.auth.signInWithPassword({email,password});notify(result.error?.message||'',!!result.error);}catch(err){notify('Connection error: '+err.message,true)}finally{setLoading(false)}}
- async function requestPasswordReset(e){
-  e.preventDefault();setLoading(true);notify('');
-  try{
-   const redirectTo=window.location.origin+'/auth/activate?flow=recovery';
-   const {error:err}=await db.auth.resetPasswordForEmail(email.trim(),{redirectTo});
-   if(err)throw err;
-   notify('If this email has a CivicOps account, a password setup link will arrive shortly. Check spam too.');
-  }catch(err){notify('Password recovery failed: '+err.message,true)}finally{setLoading(false)}
- }
- async function saveProfile(e){e.preventDefault();const name=fullName.trim(),title=designation.trim();if(name.length<2||name.length>120||title.length<2||title.length>120){notify('Enter your full name and designation (2–120 characters each).',true);return;}profileSaveInProgress.current=true;setSavingProfile(true);notify('');try{const result=await db.from('user_profiles').upsert({user_id:user.id,full_name:name,designation:title||null,updated_at:new Date().toISOString()},{onConflict:'user_id'}).select('user_id,full_name,designation,avatar_path').single();if(result.error)throw result.error;const verified=await db.from('user_profiles').select('user_id,full_name,designation,avatar_path').eq('user_id',user.id).single();if(verified.error)throw verified.error;if(verified.data.full_name!==name||(verified.data.designation||'')!==title)throw new Error('Saved values did not match when read back.');setProfiles(p=>({...p,[user.id]:verified.data}));profileInitializedFor.current=user.id;profileEditing.current=false;notify('Profile saved and verified successfully.');setProfileView(false);await refresh(user.id);}catch(e){notify('Profile not saved: '+e.message,true)}finally{profileSaveInProgress.current=false;setSavingProfile(false)}}
- async function saveAvatar(e){
-  e.preventDefault();if(!user||!db)return;
-  const sourceFile=avatarFile;if(!sourceFile){notify('Choose an image first.',true);return;}
-  if(!['image/jpeg','image/png','image/webp'].includes(sourceFile.type)||sourceFile.size>3*1024*1024){notify('Choose a JPG, PNG or WebP image under 3 MB.',true);return;}
-  setAvatarBusy(true);
-  try{
-   const file=await cropImage(sourceFile);
-   const ext='jpg';
-   const path=user.id+'/'+crypto.randomUUID()+'.'+ext;
-   const upload=await db.storage.from('profile-photos').upload(path,file,{contentType:file.type,upsert:false});if(upload.error)throw upload.error;
-   const update=await db.from('user_profiles').update({avatar_path:path,updated_at:new Date().toISOString()}).eq('user_id',user.id).select('user_id,full_name,designation,avatar_path').single();
-   if(update.error){await db.storage.from('profile-photos').remove([path]);throw update.error;}
-   const previous=profiles[user.id]?.avatar_path;
-   setProfiles(old=>({...old,[user.id]:update.data}));setAvatarFile(null);setAvatarPreview('');setZoom(1);setCropX(50);setCropY(50);
-   if(previous&&previous!==path)await db.storage.from('profile-photos').remove([previous]);
-   notify('Profile photo saved.');await refresh(user.id);
-  }catch(err){notify('Photo not saved: '+err.message,true);}finally{setAvatarBusy(false);}
- }
- async function removeAvatar(){if(!user||!db)return;setAvatarBusy(true);try{
-  const old=profiles[user.id]?.avatar_path;
-  const result=await db.from('user_profiles').update({avatar_path:null}).eq('user_id',user.id).select('user_id,full_name,designation,avatar_path').single();if(result.error)throw result.error;
-  setProfiles(p=>({...p,[user.id]:result.data}));setAvatarFile(null);setAvatarPreview('');if(old)await db.storage.from('profile-photos').remove([old]);notify('Profile photo removed.');await refresh(user.id);
- }catch(err){notify('Unable to remove photo: '+err.message,true);}finally{setAvatarBusy(false);}}
- useEffect(()=>{if(!db)return;const entries=Object.values(profiles).filter(p=>p?.avatar_path);let cancelled=false;const created=[];
-  Promise.all(entries.map(async p=>{const res=await db.storage.from('profile-photos').download(p.avatar_path);if(res.error)return null;const src=URL.createObjectURL(res.data);created.push(src);return [p.user_id,src];})).then(rows=>{if(!cancelled)setAvatarUrls(Object.fromEntries(rows.filter(Boolean)));});
-  return()=>{cancelled=true;created.forEach(x=>URL.revokeObjectURL(x));};
- },[Object.values(profiles).map(p=>p?.avatar_path).join('|')]);
- async function create(e){e.preventDefault();if(!membership)return;setLoading(true);const {error:err}=await db.from('update_requests').insert({...form,requesting_department:membership.department,created_by:user.id,owner_id:null,status:'Open'});setLoading(false);notify(err?'Request not created: '+err.message:'Request created.',!!err);if(!err){setForm({...form,title:'',details:''});setShowForm(false);await refresh()}}
- async function assignEmployee(r,employeeId){
-  setTaskBusy(true);
-  const {error:err}=await db.rpc('civicops_assign_request',{p_request_id:r.id,p_employee_id:employeeId||null});
-  setTaskBusy(false);
-  if(err)notify('Assignment not saved: '+err.message,true);
-  else{notify(employeeId?'Employee assigned successfully.':'Request returned to department inbox.');await refresh();}
- }
- async function claimRequest(r){await assignEmployee(r,user.id);}
- async function saveTaskField(r,patch){if(!canEdit(r))return;setTaskBusy(true);const {error:err}=await db.from('update_requests').update(patch).eq('id',r.id);setTaskBusy(false);if(err)notify('Task change not saved: '+err.message,true);else {notify('Task details updated.');await refresh();}}
- async function updateStatus(r,status){const {error:err}=await db.from('update_requests').update({status}).eq('id',r.id);notify(err?'Status not saved: '+err.message:'Status updated.',!!err);await refresh()}
- async function addNote(r){const body=(notes[r.id]||'').trim();if(!body)return;const {error:err}=await db.from('request_activity').insert({request_id:r.id,actor_id:user.id,body});notify(err?'Update not posted: '+err.message:'Update posted.',!!err);if(!err)setNotes(n=>({...n,[r.id]:''}));await refresh()}
- const canEdit=r=>r.assigned_department===membership?.department;
- const visible=useMemo(()=>requests.filter(r=>(!demoView||!isQaNamedRequest(r))&&(filter==='All'||r.status===filter)&&[r.title,r.project_id,r.assigned_department,r.requesting_department].join(' ').toLowerCase().includes(search.toLowerCase())&&(queue==='All work'||(queue==='Assigned to us'&&r.assigned_department===membership?.department&&r.status!=='Completed')||(queue==='Assigned to me'&&r.assigned_to===user?.id&&r.status!=='Completed')||(queue==='Unassigned'&&r.assigned_department===membership?.department&&!r.assigned_to&&r.status!=='Completed')||(queue==='Awaiting other departments'&&r.requesting_department===membership?.department&&r.assigned_department!==membership?.department&&r.status!=='Completed')||(queue==='Overdue'&&isOverdue(r))||(queue==='Due soon'&&isSoon(r))||(queue==='Needs attention'&&needsAttention(r)))).sort((a,b)=>sortBy==='Priority'?(PRIORITIES.indexOf(b.priority||'Normal')-PRIORITIES.indexOf(a.priority||'Normal')):(a.due_date||'9999').localeCompare(b.due_date||'9999')),[requests,filter,search,queue,sortBy,membership?.department,user?.id,demoView]);
- const active=requests.find(r=>r.id===activeId),history=activities.filter(a=>a.request_id===activeId),recent=history.slice(0,3),older=history.slice(3);
- const deptFiles=files.filter(f=>!f.request_id&&f.department===membership?.department);
- const requestFiles=files.filter(f=>f.request_id===activeId);
- const actor=a=>profiles[a.actor_id]?.full_name||'Name not set',title=a=>profiles[a.actor_id]?.designation||'Designation not set';
- const metrics={attention:requests.filter(r=>r.assigned_department===membership?.department&&needsAttention(r)).length,mine:requests.filter(r=>r.assigned_to===user?.id&&r.status!=='Completed').length,unassigned:requests.filter(r=>r.assigned_department===membership?.department&&!r.assigned_to&&r.status!=='Completed').length,soon:requests.filter(isSoon).length,assigned:requests.filter(r=>r.assigned_department===membership?.department&&r.status!=='Completed').length,waiting:requests.filter(r=>r.requesting_department===membership?.department&&r.assigned_department!==membership?.department&&r.status!=='Completed').length,overdue:requests.filter(r=>r.status!=='Completed'&&r.due_date&&r.due_date<new Date().toISOString().slice(0,10)).length,completed:requests.filter(r=>r.status==='Completed').length};
- const myAvatar=avatarUrls[user?.id];
- return <div className={"co-page co-view-"+view}><header className="co-header"><div><div className="co-brand-lockup"><span className="co-brand-mark" aria-hidden="true">C</span><span className="co-eyebrow">CIVICOPS / UNIFIED WORKSPACE</span></div><h1>{view==="projects"?"Projects & Requests":view==="documents"?"Data & Documents":"Dashboard"}</h1><p>Coordinate requests, track decisions, and keep every department aligned.</p></div><div className="co-header-right"><span className="co-connection">● {connection}</span>{user&&<button className="co-text-btn" onClick={()=>db.auth.signOut()}>Sign out</button>}</div></header>
- {msg&&<div role="status" className={'co-notice '+(error?'error':'')}><span>{msg}</span><button aria-label="Dismiss notification" onClick={()=>setMsg('')}>×</button></div>}
- {user&&membership&&<><div className="co-mobile-nav-bar"><span>CivicOps workspace</span><button type="button" aria-expanded={mobileMenuOpen} aria-controls="civicops-main-nav" onClick={()=>setMobileMenuOpen(v=>!v)}>{mobileMenuOpen?"✕ Close":"☰ Menu"}</button></div><nav id="civicops-main-nav" className={"co-unified-nav"+(mobileMenuOpen?" co-mobile-nav-open":"")} aria-label="CivicOps navigation"><Link href="/collaboration">Dashboard</Link><Link href="/collaboration/projects">Projects &amp; Requests</Link><Link href="/collaboration/documents">Data &amp; Documents</Link><Link href="/collaboration/reports">Reports</Link><Link href="/collaboration/management">Management</Link><div className="co-bell-wrap co-nav-bell"><button type="button" aria-expanded={bellOpen} aria-controls="civicops-notification-panel" onClick={()=>setBellOpen(x=>!x)}>Notifications{alerts.some(x=>!x.read_at)&&<span className="co-alert-count" aria-label={alerts.filter(x=>!x.read_at).length+' unread notifications'}>{alerts.filter(x=>!x.read_at).length>9?'9+':alerts.filter(x=>!x.read_at).length}</span>}</button>{bellOpen&&<section id="civicops-notification-panel" className="co-bell-panel"><div className="co-section-title"><strong>Notifications</strong><button type="button" className="co-text-btn" onClick={()=>setBellOpen(false)}>Close</button></div>{alerts.length?alerts.map(a=><button type="button" key={a.id} className={'co-alert-item '+(!a.read_at?'unread':'')} onClick={()=>markAlertRead(a)}><strong>{a.title}</strong><span>{a.body}</span><small>{date(a.created_at)} {a.read_at?'· Read':'· New'}</small></button>):<p className="co-muted">No notifications yet.</p>}</section>}</div>{membership.role==='admin'&&<Link href="/collaboration/admin">Administration</Link>}<button type="button" onClick={()=>{setProfileView(true);setMobileMenuOpen(false)}}>My Account</button></nav></>}
- {!db?<div className="co-card"><h2>Configuration required</h2><p>Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel.</p></div>:!user?<section className="co-card co-auth"><h2>Sign in to CivicOps</h2><p>Use your employee account to access your workspace.</p><Link className="co-primary" href="/login" style={{display:'inline-block',textDecoration:'none',padding:'12px 18px'}}>Go to sign in</Link><p><Link href="/forgot-password">First-time account setup / Forgot password?</Link></p></section>:<><div className="co-identity"><div className="co-person"><div className="co-avatar co-identity-avatar">{myAvatar?<img src={myAvatar} alt="Your profile"/>:(profiles[user.id]?.full_name||user.email||'?').split(' ').slice(0,2).map(x=>x[0]).join('').toUpperCase()}</div><div><strong>{profiles[user.id]?.full_name||user.email}</strong><span>{profiles[user.id]?.designation?profiles[user.id].designation+' · ':''}{membership?.department||'Awaiting assignment'} · {membership?.role||'No role assigned'}</span></div></div><div className="co-identity-actions">{membership?.role==='admin'&&<Link href="/collaboration/admin" className="co-account-btn">⚙ Administration</Link>}<button type="button" className="co-account-btn" onClick={()=>setProfileView(v=>!v)}>{profileView?'← Back to Dashboard':'My Account · Edit profile'}</button></div></div>
- {!profileLoaded?<section className="co-card co-setup"><h2>Loading your employee profile…</h2></section>:(!profiles[user.id]?.full_name?.trim()||!profiles[user.id]?.designation?.trim()||profileView)?<section className="co-card co-profile co-profile-screen"><div><span className="co-eyebrow">{!profiles[user.id]?.full_name?.trim()||!profiles[user.id]?.designation?.trim()?'FIRST-TIME SETUP':'ACCOUNT SETTINGS'}</span><h2>{!profiles[user.id]?.full_name?.trim()||!profiles[user.id]?.designation?.trim()?'Complete your employee profile':'Edit your profile'}</h2><p>Set your name and job title once. Your department and access role are verified from your account.</p><p className="co-muted">{user.email} · {membership?.department||'Department pending'} · {membership?.role||'Role pending'}</p></div><form onSubmit={saveProfile} className="co-profile-fields"><label>Full name<input value={fullName} onChange={e=>{profileEditing.current=true;setFullName(e.target.value)}} placeholder="e.g. Jason Hicks" maxLength={120} minLength={2} required/></label><label>Designation / job title<input value={designation} onChange={e=>{profileEditing.current=true;setDesignation(e.target.value)}} placeholder="e.g. Permit Specialist" maxLength={120} minLength={2} required/></label><button className="co-primary" disabled={savingProfile}>{savingProfile?'Saving…':'Save profile'}</button></form><form className="co-photo-editor" onSubmit={saveAvatar}><div className="co-photo-preview">{avatarPreview?<img src={avatarPreview} alt="Selected photo preview" style={{objectFit:'cover',objectPosition:`${cropX}% ${cropY}%`,transform:`scale(${zoom})`}}/>:myAvatar?<img src={myAvatar} alt="Current profile photo"/>:<span>Photo</span>}</div><div><strong>Profile photo</strong><p className="co-muted">JPG, PNG, or WebP · Maximum 3 MB. Square images work best.</p><input aria-label="Select profile photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{const f=e.target.files?.[0]||null;setAvatarFile(f);if(avatarPreview)URL.revokeObjectURL(avatarPreview);setAvatarPreview(f?URL.createObjectURL(f):'')}}/>{avatarFile&&<div className="co-crop-controls"><label>Zoom <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={e=>setZoom(Number(e.target.value))}/></label><label>Horizontal position <input type="range" min="0" max="100" value={cropX} onChange={e=>setCropX(Number(e.target.value))}/></label><label>Vertical position <input type="range" min="0" max="100" value={cropY} onChange={e=>setCropY(Number(e.target.value))}/></label><p className="co-muted">Preview the circular crop, then save. The uploaded photo is optimized to 384 × 384 pixels.</p></div>}<div className="co-photo-actions"><button className="co-primary" disabled={!avatarFile||avatarBusy}>{avatarBusy?'Saving…':'Upload photo'}</button>{profiles[user.id]?.avatar_path&&<button type="button" className="co-file-action" onClick={removeAvatar} disabled={avatarBusy}>Remove photo</button>}</div></div></form><div className="co-preferences"><h3>Notification preferences</h3><p className="co-muted">In-app alerts are always available. Email delivery requires the server-side Resend integration to be enabled.</p><label><input type="checkbox" checked={notificationSettings.email_enabled} onChange={e=>saveNotificationSettings({...notificationSettings,email_enabled:e.target.checked})}/> Email alerts (queued until email service is connected)</label><label><input type="checkbox" checked={notificationSettings.desktop_enabled} onChange={toggleDesktop}/> Desktop alerts while CivicOps is open</label></div></section>:null}
- {profileLoaded&&profiles[user.id]?.full_name?.trim()&&profiles[user.id]?.designation?.trim()&&!profileView&&<>
- {!membership?<section className="co-card"><h2>Department assignment required</h2><p>Ask your pilot administrator to assign your department in Supabase.</p></section>:<><div className="co-toolbar"><div><h2>Requests workspace</h2><p>{demoView?'Presentation filter active · QA-named requests hidden from the list':`${requests.length} requests accessible to your department`}</p></div><button className="co-primary" onClick={()=>setShowForm(x=>!x)}>{showForm?'Close form':'+ New request'}</button></div>
- {showForm&&<section className="co-card co-create"><h2>Create update request</h2><form onSubmit={create} className="co-create-grid"><label>Project ID<input required value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})}/></label><label>Request title<input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>Assigned department<select value={form.assigned_department} onChange={e=>setForm({...form,assigned_department:e.target.value})}>{DEPTS.map(d=><option key={d}>{d}</option>)}</select></label><label>Due date<input type="date" required value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}/></label><label className="co-wide">Details<textarea value={form.details} onChange={e=>setForm({...form,details:e.target.value})}/></label><button className="co-primary" disabled={loading}>Create request</button></form></section>}
- <div className="co-reports-link"><div><strong>Spreadsheet intelligence</strong><p>Review imported project records and department reporting.</p></div><a href="/collaboration/reports" className="co-primary">Open reporting →</a></div>
- <section id="co-overview" className="co-dashboard" aria-label="Department dashboard"><div className="co-section-title"><div><h2>Department overview</h2><p className="co-muted">Current requests visible to {membership.department}</p></div><span className="co-count">Live workspace</span></div><div className="co-metric-grid">{[{label:'Assigned to us',value:metrics.assigned,filter:'All',queue:'Assigned to us',hint:'Open work for our department'},{label:'Awaiting responses',value:metrics.waiting,filter:'All',queue:'Awaiting other departments',hint:'Sent to other departments'},{label:'Overdue',value:metrics.overdue,filter:'All',queue:'Overdue',hint:'Past due and not completed'},{label:'Needs attention',value:metrics.attention,filter:'All',queue:'Needs attention',hint:'Overdue, urgent, or high-priority unassigned work'},{label:'Completed',value:metrics.completed,filter:'Completed',queue:'All work',hint:'Closed requests'}].map(m=><button key={m.label} className="co-metric co-card" onClick={()=>{setFilter(m.filter);setQueue(m.queue);setWorkspaceTab('requests');document.getElementById('co-requests')?.scrollIntoView({behavior:'smooth',block:'start'})}}><span>{m.label}</span><strong>{m.value}</strong><small>{m.hint}</small></button>)}</div></section>
- <section className="co-task-overview co-card"><div className="co-section-title"><div><h2>My work queue</h2><p className="co-muted">Prioritize requests, identify unassigned work, and track upcoming deadlines.</p></div></div><div className="co-queue-cards">{[{label:'Assigned to me',value:metrics.mine,queue:'Assigned to me'},{label:'Needs an owner',value:metrics.unassigned,queue:'Unassigned'},{label:'Due within 3 days',value:metrics.soon,queue:'Due soon'},{label:'Needs attention',value:metrics.attention,queue:'Needs attention'}].map(t=><button key={t.label} type="button" className="co-queue-card" onClick={()=>{setQueue(t.queue);setFilter('All');document.getElementById('co-requests')?.scrollIntoView({behavior:'smooth'})}}><strong>{t.value}</strong><span>{t.label}</span></button>)}</div></section>
- <section id="co-files" className="co-card co-files"><div className="co-section-title"><div><h2>Department files</h2><p className="co-muted">Files available only to your department. Attach documents directly inside a request.</p></div><span className="co-count">{deptFiles.length} department files</span></div><form className="co-file-upload" onSubmit={uploadFile}><label>Choose file<input type="file" accept=".xlsx,.xls,.csv,.pdf,.docx,.doc" onChange={e=>setFileSelected(e.target.files?.[0]||null)} required/></label><button className="co-primary" disabled={fileBusy||!fileSelected}>{fileBusy?'Uploading…':'Upload file'}</button></form><p className="co-muted">Excel, CSV, PDF, Word · Maximum 10 MB · Private storage · Downloads require access</p><div className="co-file-list">{deptFiles.length?deptFiles.map(f=><div className="co-file-row" key={f.id}><div><strong>📄 {f.original_name}</strong><span className="co-muted">{fileSize(f.file_size)} · {date(f.created_at)} · {f.department}</span></div><button className="co-file-action" onClick={()=>downloadFile(f)}>Download</button></div>):<p className="co-muted">No department files uploaded yet.</p>}</div></section>
- <div id="co-requests" className="co-workspace">{demoView&&<div className="co-demo-note" role="status">Presentation view: QA-named requests are filtered from this list only. Dashboard metrics and other screens still show live authorized data. <button type="button" onClick={()=>{setDemoView(false);window.history.replaceState(null,'',window.location.pathname)}}>Show all requests</button></div>}<section className="co-card co-list"><div className="co-section-title"><h3>All requests</h3><span className="co-count">{visible.length}</span></div><input aria-label="Search requests" placeholder="Search project, request, department…" value={search} onChange={e=>setSearch(e.target.value)}/><div className="co-filters">{['All','Open','In Progress','Completed'].map(s=><button key={s} className={filter===s?'selected':''} onClick={()=>setFilter(s)}>{s}</button>)}</div><div className="co-queue-controls"><label>Work queue<select aria-label="Work queue" value={queue} onChange={e=>setQueue(e.target.value)}>{['All work','Assigned to us','Assigned to me','Unassigned','Awaiting other departments','Overdue','Due soon','Needs attention'].map(q=><option key={q}>{q}</option>)}</select></label><label>Sort<select aria-label="Sort requests" value={sortBy} onChange={e=>setSortBy(e.target.value)}><option>Due date</option><option>Priority</option></select></label></div><div className="co-request-list">{visible.length===0?<p className="co-muted">No matching requests.</p>:visible.map(r=><button key={r.id} className={'co-request '+(activeId===r.id?'active':'')} onClick={()=>{setActiveId(r.id);setShowOlder(false)}}><div className="co-request-top"><strong>{r.title}</strong><span className={'co-status '+statusClass(r.status)}>{r.status}</span></div><span className="co-muted">{r.project_id} · {r.requesting_department} → {r.assigned_department}</span><span className="co-muted">Due {due(r.due_date)} · <span className={'co-priority '+(r.priority||'Normal').toLowerCase()}>{r.priority||'Normal'} priority</span>{isOverdue(r)?' · OVERDUE':''}</span>{needsAttention(r)&&<span className="co-attention-tag">Needs attention</span>}<span className="co-muted">Requested by: {profiles[r.created_by]?.full_name||"Employee profile unavailable"}</span><span className="co-muted">Owner: {r.assigned_to?(profiles[r.assigned_to]?.full_name||'Assigned employee'):'Unassigned'}</span></button>)}</div></section>
- <section className="co-card co-detail">{!active?<div className="co-empty">Select a request to see its updates.</div>:<><div className="co-detail-head"><span className="co-eyebrow">{active.project_id} / REQUEST DETAILS</span><h2>{active.title}</h2><div className="co-detail-meta"><span>{active.requesting_department} → {active.assigned_department}</span><span>Due {due(active.due_date)}</span></div></div><div className="co-ownership-summary"><div><small>Requested by</small><strong>{profiles[active.created_by]?.full_name||'Employee profile unavailable'}</strong><span>{active.requesting_department}</span></div><div><small>Receiving department</small><strong>{active.assigned_department}</strong></div><div><small>Assigned employee</small><strong>{active.assigned_to?(profiles[active.assigned_to]?.full_name||'Assigned employee'):'Awaiting assignment'}</strong></div></div>
- <p className="co-description">{active.details||'No additional details provided.'}</p><div className="co-status-row"><label>Request status{canEdit(active)?<select value={active.status} onChange={e=>updateStatus(active,e.target.value)}>{['Open','In Progress','Completed'].map(s=><option key={s}>{s}</option>)}</select>:<span className={'co-status '+statusClass(active.status)}>{active.status}</span>}</label></div><section className="co-task-fields"><div className="co-section-title"><h3>Assignment &amp; priority</h3>{needsAttention(active)&&<span className="co-attention-tag">Needs attention</span>}{isOverdue(active)&&<span className="co-overdue-tag">Overdue</span>}</div><div className="co-task-grid"><label>Priority{canEdit(active)?<select disabled={taskBusy} value={active.priority||'Normal'} onChange={e=>saveTaskField(active,{priority:e.target.value})}>{PRIORITIES.map(p=><option key={p}>{p}</option>)}</select>:<strong>{active.priority||'Normal'}</strong>}</label><label>Assigned employee
- {membership?.department===active.assigned_department&&membership?.role==='admin'?
- <select disabled={taskBusy} value={active.assigned_to||''} onChange={e=>assignEmployee(active,e.target.value)}>
- <option value="">Awaiting assignment</option>
- {recipientTeam.map(x=><option key={x.user_id} value={x.user_id}>{profiles[x.user_id]?.full_name||'Employee '+x.user_id.slice(0,8)}</option>)}
- </select>:
- <strong>{active.assigned_to?(profiles[active.assigned_to]?.full_name||'Assigned employee'):'Awaiting assignment'}</strong>}
- {!active.assigned_to&&membership?.department===active.assigned_department&&membership?.role!=='admin'&&
- <button type="button" className="co-claim-btn" disabled={taskBusy} onClick={()=>claimRequest(active)}>Claim this request</button>}
- </label></div><p className="co-muted">Receiving-department admins assign or reassign employees. Department members can claim unassigned work. The requesting department can follow progress without managing another team.</p></section><div className="co-request-files"><div className="co-section-title"><h3>Request attachments</h3><span className="co-count">{requestFiles.length}</span></div><form className="co-attachment-upload" onSubmit={e=>uploadFile(e,active.id)}><div className="co-dropzone"><span className="co-upload-icon" aria-hidden="true">↥</span><div><strong>Attach a document to this request</strong><span>Excel, CSV, PDF, Word · Up to 10 MB</span></div><input aria-label="Choose request attachment" type="file" accept=".xlsx,.xls,.csv,.pdf,.docx,.doc" onChange={e=>setAttachmentSelected(e.target.files?.[0]||null)} required/></div><button className="co-primary" disabled={fileBusy||!attachmentSelected}>{fileBusy?'Uploading…':'Attach file'}</button></form>{requestFiles.length?requestFiles.map(f=><div className="co-file-row" key={f.id}><div><strong>📎 {f.original_name}</strong><span className="co-muted">{profiles[f.uploaded_by]?.full_name||"Employee"} · {f.department} · {fileSize(f.file_size)} · {date(f.created_at)}</span></div><button className="co-file-action" onClick={()=>downloadFile(f)}>Download</button></div>):<p className="co-muted">No attachments yet. Add a file below to share it with the departments participating in this request.</p>}</div><div className="co-conversation"><div className="co-section-title"><h3>Recent activity</h3><span className="co-count">{history.length}</span></div>{recent.length===0?<p className="co-muted">No updates yet. Start the conversation below.</p>:recent.map(a=><Activity key={a.id} a={a} actor={actor(a)} designation={title(a)} avatarUrl={avatarUrls[a.actor_id]}/>)}{older.length>0&&<div className="co-older"><button onClick={()=>setShowOlder(v=>!v)}>{showOlder?'Hide older activity':'Show '+older.length+' older updates'} <span>{showOlder?'⌃':'⌄'}</span></button>{showOlder&&older.map(a=><Activity key={a.id} a={a} actor={actor(a)} designation={title(a)} avatarUrl={avatarUrls[a.actor_id]}/>)}</div>}</div><div className="co-compose"><label>Post an update<textarea placeholder="Share a progress update, outstanding issue, or next step…" value={notes[active.id]||''} onChange={e=>setNotes({...notes,[active.id]:e.target.value})}/></label><div className="co-compose-footer"><span>Updates are visible to the participating departments.</span><button className="co-primary" disabled={!(notes[active.id]||'').trim()} onClick={()=>addNote(active)}>Post update</button></div></div></>}</section></div></> }</>}
- </>}
- <footer className="co-footer">Independent demonstration, not an official City system · Shared updates refresh every 10 seconds · Do not upload sensitive operational records to this pilot.</footer></div>;
+
+ return (
+  <main className="ent-page">
+   <header className="ent-header">
+    <div>
+     <div className="ent-eyebrow">CIVICOPS / ENTERPRISE OPERATIONS</div>
+     <h1>Locations & Facilities</h1>
+     <p>One secure workspace for facilities, site status and corrective actions.</p>
+    </div>
+   </header>
+
+   {error&&<div role="alert" className="ent-error">{error}</div>}
+
+   {!user&&!busy?(
+    <section className="ent-panel">
+     Please <Link href="/login">sign in</Link> to access your organization workspace.
+    </section>
+   ):null}
+
+   {user&&!busy&&orgs.length===0?(
+    <section className="ent-panel">
+     <h2>No enterprise workspace assigned</h2>
+     <p>Your account has no enterprise organization membership. A trusted platform administrator must provision an organization and assign your account. Existing municipal access remains unchanged.</p>
+    </section>
+   ):null}
+
+   {orgs.length>0&&<>
+    <div className="ent-toolbar">
+     <label>
+      Organization
+      <select value={orgId} onChange={e=>{setOrgId(e.target.value);setSelected('')}}>
+       {orgs.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+     </label>
+     <button onClick={()=>setAdding(v=>!v)}>+ Add facility</button>
+    </div>
+
+    <div className="ent-kpis">
+     {[
+      ['Facilities',facilities.length],
+      ['Attention needed',facilities.filter(f=>f.status==='attention'||f.status==='critical').length],
+      ['Open actions',actions.filter(a=>!['resolved','verified'].includes(a.status)).length],
+      ['Mapped locations',facilities.filter(f=>f.latitude!=null&&f.longitude!=null).length]
+     ].map(([label,n])=><div key={label}>
+      <strong>{n}</strong><span>{label}</span>
+     </div>)}
+    </div>
+
+    {adding&&<form className="ent-panel ent-form" onSubmit={addFacility}>
+     <h2>New facility</h2>
+     <label>Facility name<input name="name" required maxLength="160"/></label>
+     <label>Region<input name="region" maxLength="160"/></label>
+     <label>Address<input name="address" maxLength="250"/></label>
+     <label>Latitude<input name="latitude" type="number" step="any" min="-90" max="90"/></label>
+     <label>Longitude<input name="longitude" type="number" step="any" min="-180" max="180"/></label>
+     <p>Enter only verified coordinates. No facility positions are inferred.</p>
+     <button disabled={saving}>{saving?'Saving…':'Save facility'}</button>
+    </form>}
+
+    <div className="ent-columns">
+     <section className="ent-panel">
+      <div className="ent-row">
+       <h2>Facility register</h2>
+       <select aria-label="Filter facility status" value={filter} onChange={e=>setFilter(e.target.value)}>
+        {['all','operational','attention','critical','inactive'].map(s=>
+         <option key={s} value={s}>{s==='all'?'All statuses':s}</option>
+        )}
+       </select>
+      </div>
+
+      {busy?<p>Loading…</p>:visible.length===0?
+       <p>No facilities match. Add a verified facility to get started.</p>:
+       <div className="ent-list">
+        {visible.map(f=><button key={f.id} className={selected===f.id?'active':''} onClick={()=>setSelected(f.id)}>
+         <span>
+          <strong>{f.name}</strong>
+          <small>{f.region||'Region not specified'} · {f.latitude!=null?'Mapped':'Coordinates pending'}</small>
+         </span>
+         <em data-status={f.status}>{f.status}</em>
+        </button>)}
+       </div>}
+     </section>
+
+     <aside className="ent-panel">
+      <h2>{chosen?.name||'Facility details'}</h2>
+      {!chosen?<p>Select a facility to view its details and outstanding actions.</p>:<>
+       <p>{chosen.address||'Address not recorded'}</p>
+       <p>Region: {chosen.region||'Not specified'}</p>
+       <p>Status: <strong>{chosen.status}</strong></p>
+       <p>Coordinates: {chosen.latitude!=null?`${chosen.latitude}, ${chosen.longitude}`:'Not verified'}</p>
+       <h3>Corrective actions</h3>
+       {activeActions.length?activeActions.map(a=>
+        <div className="ent-action" key={a.id}>
+         <strong>{a.title}</strong>
+         <small>{a.priority} · {a.status}</small>
+        </div>
+       ):<p>No actions recorded for this facility.</p>}
+      </>}
+     </aside>
+    </div>
+   </>}
+  </main>
+ );
 }
-function Activity({a,actor,designation,avatarUrl}){const status=a.event_type==='status_change';return <article className="co-activity"><div className="co-avatar" aria-hidden="true">{avatarUrl?<img src={avatarUrl} alt=""/>:actor==='Name not set'?'?':actor.split(' ').slice(0,2).map(x=>x[0]).join('').toUpperCase()}</div><div className="co-activity-main"><div className="co-activity-head"><div><strong>{actor}</strong><div className="co-activity-role">{designation} · {a.actor_department||'Department not recorded'}</div></div><time dateTime={a.created_at}>{date(a.created_at)}</time></div>{status?<div className="co-status-event"><span className="co-status-label">Status changed</span><span className={'co-status '+statusClass(a.previous_status)}>{a.previous_status||'Unknown'}</span><span className="co-status-arrow" aria-label="to">→</span><span className={'co-status '+statusClass(a.new_status)}>{a.new_status||'Unknown'}</span></div>:<p className="co-activity-message">{a.body}</p>}</div></article>}
