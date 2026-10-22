@@ -17,8 +17,11 @@ const municipalSections = [
   ['/collaboration/access-management', 'User Access Management', '♙'],
 ];
 
+
 const enterpriseSections = [
   ['/collaboration/enterprise', 'Locations & Facilities', '▦'],
+  ['/collaboration/enterprise/assets', 'Assets & Equipment', '◫'],
+  ['/collaboration/enterprise/inspections', 'Inspections & Audits', '▤'],
 ];
 
 export default function CollaborationLayout({ children }) {
