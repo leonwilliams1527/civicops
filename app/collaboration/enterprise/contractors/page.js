@@ -174,6 +174,9 @@ export default function ContractorsPage() {
   const [assignments, setAssignments] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [credentials, setCredentials] = useState([]);
+  const [contractLocations, setContractLocations] = useState([]);
+  const [contractLocationEdit, setContractLocationEdit] = useState('');
+  const [locationChoices, setLocationChoices] = useState([]);
 
   const [selected, setSelected] = useState('');
   const [tab, setTab] = useState('overview');
@@ -234,7 +237,7 @@ export default function ContractorsPage() {
       throw Error('Session expired. Please sign in again.');
     }
 
-    const [f, v, a, c, d, m] = await Promise.all([
+    const [f, v, a, c, d, m, cl] = await Promise.all([
       db.from('enterprise_facilities')
         .select('id,name,region,status')
         .eq('organization_id', organizationId)
@@ -261,9 +264,13 @@ export default function ContractorsPage() {
         .select('role')
         .eq('organization_id', organizationId)
         .eq('user_id', auth.data.user.id),
+
+      db.from('enterprise_contract_locations')
+        .select('*')
+        .eq('organization_id', organizationId),
     ]);
 
-    for (const result of [f, v, a, c, d, m]) {
+    for (const result of [f, v, a, c, d, m, cl]) {
       if (result.error) throw result.error;
     }
 
@@ -273,6 +280,7 @@ export default function ContractorsPage() {
       assignments: a.data || [],
       contracts: c.data || [],
       credentials: d.data || [],
+      contractLocations: cl.data || [],
       canWrite: (m.data || []).some(x =>
         ['manager', 'operator', 'admin', 'owner'].includes(x.role)
       ),
@@ -285,6 +293,7 @@ export default function ContractorsPage() {
     setAssignments(data.assignments);
     setContracts(data.contracts);
     setCredentials(data.credentials);
+    setContractLocations(data.contractLocations);
     setCanWrite(data.canWrite);
   }
 
@@ -297,6 +306,7 @@ export default function ContractorsPage() {
     setMessage('');
     setSelected('');
     setOpenForm('');
+    setContractLocationEdit('');
 
     async function load() {
       try {
@@ -310,6 +320,7 @@ export default function ContractorsPage() {
           setAssignments([]);
           setContracts([]);
           setCredentials([]);
+          setContractLocations([]);
           setCanWrite(false);
         }
       } finally {
@@ -354,6 +365,7 @@ export default function ContractorsPage() {
     setSelected(id);
     setTab('overview');
     setOpenForm('');
+    setContractLocationEdit('');
     setMessage('');
     setError('');
   }
@@ -361,6 +373,7 @@ export default function ContractorsPage() {
   function switchTab(next) {
     setTab(next);
     setOpenForm('');
+    setContractLocationEdit('');
     setError('');
   }
 
@@ -386,6 +399,39 @@ export default function ContractorsPage() {
   const vendorContracts = contracts.filter(
     c => c.contractor_id === selected
   );
+
+  function startContractLocationEdit(contract) {
+    setContractLocationEdit(contract.id);
+    setLocationChoices(contractLocations
+      .filter(x => x.contract_id === contract.id)
+      .map(x => x.facility_id));
+    setError('');
+    setMessage('');
+  }
+
+  async function saveContractLocations(contractId) {
+    if (busy || !canWrite || !org) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      // Single atomic database call prevents partially applied assignments.
+      const result = await db.rpc('enterprise_set_contract_locations', {
+        p_organization_id: org,
+        p_contract_id: contractId,
+        p_facility_ids: locationChoices,
+      });
+      if (result.error) throw result.error;
+      const refreshed = await fetchRecords(org);
+      applyRecords(refreshed);
+      setContractLocationEdit('');
+      setMessage('Contract locations updated successfully.');
+    } catch (e) {
+      setError(e.message || 'Unable to update contract locations.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const vendorCredentials = credentials.filter(
     c => c.contractor_id === selected
@@ -906,6 +952,46 @@ export default function ContractorsPage() {
                           <strong>End:</strong>{' '}
                           {c.end_date || 'Not recorded'}
                         </p>
+                        <div style={{ marginTop: 16, borderTop: '1px solid #dce4ed', paddingTop: 12 }}>
+                          <strong>Contract coverage</strong>
+                          {(() => {
+                            const rows = contractLocations.filter(x => x.contract_id === c.id);
+                            const names = rows.map(x => facilities.find(f => f.id === x.facility_id)?.name).filter(Boolean);
+                            return <p style={{ margin: '8px 0' }}>
+                              {rows.length === 0
+                                ? 'Company-wide agreement (all organization facilities)'
+                                : names.length ? names.join(' · ') : 'Assigned facilities not available'}
+                            </p>;
+                          })()}
+                          {canWrite && contractLocationEdit !== c.id && (
+                            <button type="button" style={secondaryButton} onClick={() => startContractLocationEdit(c)}>
+                              Manage contract locations
+                            </button>
+                          )}
+                          {canWrite && contractLocationEdit === c.id && (
+                            <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+                              <p style={{ margin: 0, fontSize: 13 }}>
+                                Select covered locations. Leave all unchecked for company-wide coverage.
+                              </p>
+                              {facilities.map(f => (
+                                <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <input type="checkbox" checked={locationChoices.includes(f.id)}
+                                    onChange={e => setLocationChoices(old => e.target.checked
+                                      ? [...old, f.id] : old.filter(id => id !== f.id))} />
+                                  {f.name}
+                                </label>
+                              ))}
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                <button type="button" disabled={busy} style={buttonStyle}
+                                  onClick={() => saveContractLocations(c.id)}>
+                                  {busy ? 'Saving…' : 'Save contract coverage'}
+                                </button>
+                                <button type="button" disabled={busy} style={secondaryButton}
+                                  onClick={() => setContractLocationEdit('')}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                         {c.end_date && c.end_date < today && (
                           <p style={{ color: '#a43b35' }}>
                             End date has passed — review contract status.
@@ -1219,4 +1305,3 @@ export default function ContractorsPage() {
     </main>
   );
 }
-
