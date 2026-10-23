@@ -19,11 +19,13 @@ const municipalSections = [
 
 
 
+
 const enterpriseSections = [
   ['/collaboration/enterprise/dashboard', 'Executive Dashboard', '▥'],
   ['/collaboration/enterprise', 'Locations & Facilities', '▦'],
   ['/collaboration/enterprise/assets', 'Assets & Equipment', '◫'],
   ['/collaboration/enterprise/inspections', 'Inspections & Audits', '▤'],
+  ['/collaboration/enterprise/contractors', 'Contractors & Vendors', '♧'],
 ];
 
 export default function CollaborationLayout({ children }) {
