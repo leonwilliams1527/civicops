@@ -478,38 +478,81 @@ export default function ContractorsPage() {
               </select>
             </div>
 
-            {shown.map(c => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelected(c.id)}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: 14,
-                  marginBottom: 8,
-                  border: '1px solid #dce4ed',
-                  borderRadius: 9,
-                  background: selected === c.id ? '#eaf3ff' : 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                <span>
-                  <strong>{c.name}</strong>
-                  <br />
-                  <small>
-                    {c.category} ·{' '}
-                    {assignments.filter(
-                      x => x.contractor_id === c.id
-                    ).length} assigned locations
-                  </small>
-                </span>
-                <span>{c.status}</span>
-              </button>
-            ))}
+
+{shown.map(c => (
+  <button
+    key={c.id}
+    type="button"
+    onClick={() => setSelected(c.id)}
+    aria-pressed={selected === c.id}
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      width: '100%',
+      minHeight: 70,
+      textAlign: 'left',
+      padding: '14px 16px',
+      marginBottom: 8,
+      border: selected === c.id
+        ? '2px solid #246fae'
+        : '1px solid #dce4ed',
+      borderRadius: 9,
+      backgroundColor: selected === c.id
+        ? '#eaf3ff'
+        : '#ffffff',
+      color: '#172b42',
+      fontSize: 14,
+      cursor: 'pointer',
+      appearance: 'none',
+      WebkitAppearance: 'none',
+    }}
+  >
+    <span style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 5,
+      color: '#172b42',
+    }}>
+      <strong style={{
+        color: '#172b42',
+        fontSize: 15,
+        fontWeight: 700,
+      }}>
+        {c.name || 'Unnamed contractor'}
+      </strong>
+
+      <span style={{
+        color: '#52667e',
+        fontSize: 12,
+      }}>
+        {c.category || 'General services'}
+        {' · '}
+        {assignments.filter(
+          x => x.contractor_id === c.id
+        ).length}
+        {' assigned locations'}
+      </span>
+    </span>
+
+    <span style={{
+      padding: '5px 10px',
+      borderRadius: 20,
+      backgroundColor: c.status === 'active'
+        ? '#e2f3ea'
+        : '#edf1f5',
+      color: c.status === 'active'
+        ? '#176346'
+        : '#52667e',
+      fontSize: 12,
+      fontWeight: 600,
+    }}>
+      {c.status || 'Unknown'}
+    </span>
+  </button>
+))}
+
 
             {!shown.length && <p>No vendors match this selection.</p>}
           </section>
