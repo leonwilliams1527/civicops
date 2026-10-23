@@ -18,7 +18,9 @@ const municipalSections = [
 ];
 
 
+
 const enterpriseSections = [
+  ['/collaboration/enterprise/dashboard', 'Executive Dashboard', '▥'],
   ['/collaboration/enterprise', 'Locations & Facilities', '▦'],
   ['/collaboration/enterprise/assets', 'Assets & Equipment', '◫'],
   ['/collaboration/enterprise/inspections', 'Inspections & Audits', '▤'],
@@ -36,10 +38,18 @@ export default function CollaborationLayout({ children }) {
     ? enterpriseSections
     : municipalSections;
 
-  const active = (href) =>
-    href === '/collaboration'
-      ? path === '/collaboration'
-      : path === href || path.startsWith(href + '/');
+  
+const active = (href) => {
+  if (
+    href === '/collaboration' ||
+    href === '/collaboration/enterprise'
+  ) {
+    return path === href;
+  }
+
+  return path === href || path.startsWith(href + '/');
+};
+
 
   return (
     <div className="civic-shell">
