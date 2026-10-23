@@ -1,4 +1,4 @@
-
+ 
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -29,35 +29,39 @@ const proxy = async (input, init) => {
   return fetch(input, init);
 };
 
-const db =
-  url && key
-    ? createClient(url, key, { global: { fetch: proxy } })
-    : null;
+const db = url && key
+  ? createClient(url, key, { global: { fetch: proxy } })
+  : null;
 
 const futureModules = [
-  ['Contractors & vendors', 'Vendor compliance, assignments and performance'],
   ['Work orders', 'Maintenance backlog, deadlines and completion'],
   ['Projects', 'Milestones, progress and department performance'],
   ['Procurement & finance', 'Budgets, commitments and operating costs'],
   ['Employees & teams', 'Staffing and departmental coverage'],
 ];
 
+const CLOSED = ['resolved', 'verified', 'completed', 'closed'];
+
 function Card({ title, value, note }) {
   return (
     <div className="ent-panel" style={{ padding: 20 }}>
-      <div style={{ fontSize: 13, color: '#52667e' }}>{title}</div>
-      <div
-        style={{
-          fontSize: 34,
-          fontWeight: 750,
-          marginTop: 8,
-          color: '#142d47',
-        }}
-      >
+      <div style={{ fontSize: 13, color: '#52667e' }}>
+        {title}
+      </div>
+      <div style={{
+        fontSize: 34,
+        fontWeight: 750,
+        marginTop: 8,
+        color: '#142d47',
+      }}>
         {value}
       </div>
       {note && (
-        <div style={{ fontSize: 12, color: '#66788d', marginTop: 5 }}>
+        <div style={{
+          fontSize: 12,
+          color: '#66788d',
+          marginTop: 5,
+        }}>
           {note}
         </div>
       )}
@@ -66,52 +70,88 @@ function Card({ title, value, note }) {
 }
 
 function StatusBar({ label, count, total, color }) {
-  const percent = total ? Math.round((count / total) * 100) : 0;
+  const percent = total
+    ? Math.round((count / total) * 100)
+    : 0;
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginBottom: 7,
-          gap: 12,
-          fontSize: 13,
-        }}
-      >
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: 7,
+        gap: 12,
+        fontSize: 13,
+      }}>
         <span>{label}</span>
         <strong>{count} ({percent}%)</strong>
       </div>
-      <div
-        style={{
-          background: '#e8eef5',
+      <div style={{
+        background: '#e8eef5',
+        borderRadius: 12,
+        height: 9,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          width: `${percent}%`,
+          background: color,
+          height: '100%',
           borderRadius: 12,
-          height: 9,
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            width: `${percent}%`,
-            background: color,
-            height: '100%',
-            borderRadius: 12,
-          }}
-        />
+        }} />
       </div>
     </div>
   );
 }
 
+function expiryStatus(date) {
+  if (!date) return 'unknown';
+
+  const today = new Date().toISOString().slice(0, 10);
+  const warning = new Date(
+    Date.now() + 30 * 86400000
+  ).toISOString().slice(0, 10);
+
+  if (date < today) return 'expired';
+  if (date <= warning) return 'expiring';
+
+  return 'current';
+}
+
+function formatMoney(value, currency = 'GYD') {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) return 'Not recorded';
+
+  return `${currency} ${number.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+const panelGrid = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))',
+  gap: 16,
+  marginBottom: 20,
+};
+
 export default function ExecutiveDashboard() {
   const [organizations, setOrganizations] = useState([]);
   const [organizationId, setOrganizationId] = useState('');
+  const [facilityFilter, setFacilityFilter] = useState('all');
+
   const [facilities, setFacilities] = useState([]);
   const [assets, setAssets] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [findings, setFindings] = useState([]);
   const [actions, setActions] = useState([]);
-  const [facilityFilter, setFacilityFilter] = useState('all');
+
+  const [contractors, setContractors] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [contracts, setContracts] = useState([]);
+  const [credentials, setCredentials] = useState([]);
+  const [contractFacilities, setContractFacilities] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -120,9 +160,12 @@ export default function ExecutiveDashboard() {
 
     async function loadOrganizations() {
       try {
-        if (!db) throw new Error('Supabase is not configured.');
+        if (!db) {
+          throw new Error('Supabase is not configured.');
+        }
 
         const auth = await db.auth.getUser();
+
         if (auth.error || !auth.data.user) {
           throw new Error('Please sign in to view the dashboard.');
         }
@@ -149,7 +192,10 @@ export default function ExecutiveDashboard() {
     }
 
     loadOrganizations();
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -163,7 +209,7 @@ export default function ExecutiveDashboard() {
       setFacilityFilter('all');
 
       try {
-        const [f, a, i, r] = await Promise.all([
+        const queries = await Promise.all([
           db.from('enterprise_facilities')
             .select('*')
             .eq('organization_id', organizationId)
@@ -180,31 +226,52 @@ export default function ExecutiveDashboard() {
           db.from('enterprise_actions')
             .select('*')
             .eq('organization_id', organizationId),
+
+          db.from('enterprise_contractors')
+            .select('*')
+            .eq('organization_id', organizationId),
+
+          db.from('enterprise_contractor_facilities')
+            .select('*')
+            .eq('organization_id', organizationId),
+
+          db.from('enterprise_contractor_contracts')
+            .select('*')
+            .eq('organization_id', organizationId),
+
+          db.from('enterprise_contractor_credentials')
+            .select('*')
+            .eq('organization_id', organizationId),
+
+          db.from('enterprise_contractor_contract_facilities')
+            .select('*')
+            .eq('organization_id', organizationId),
         ]);
 
-        for (const result of [f, a, i, r]) {
+        for (const result of queries) {
           if (result.error) throw result.error;
         }
 
+        const [
+          f, a, i, r, c, assigned, agreements,
+          compliance, agreementLocations,
+        ] = queries;
+
         const inspectionRows = i.data || [];
-        const inspectionIds = inspectionRows.map(item => item.id);
+        const inspectionIds = inspectionRows.map(x => x.id);
+        const findingRows = [];
 
-        let findingRows = [];
+        for (let offset = 0; offset < inspectionIds.length; offset += 100) {
+          const batch = inspectionIds.slice(offset, offset + 100);
 
-        if (inspectionIds.length) {
-          // Batch IDs to avoid excessively long query URLs.
-          for (let offset = 0; offset < inspectionIds.length; offset += 100) {
-            const batch = inspectionIds.slice(offset, offset + 100);
+          const result = await db
+            .from('enterprise_findings')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .in('inspection_id', batch);
 
-            const response = await db
-              .from('enterprise_findings')
-              .select('*')
-              .eq('organization_id', organizationId)
-              .in('inspection_id', batch);
-
-            if (response.error) throw response.error;
-            findingRows.push(...(response.data || []));
-          }
+          if (result.error) throw result.error;
+          findingRows.push(...(result.data || []));
         }
 
         if (active) {
@@ -213,6 +280,12 @@ export default function ExecutiveDashboard() {
           setInspections(inspectionRows);
           setActions(r.data || []);
           setFindings(findingRows);
+
+          setContractors(c.data || []);
+          setAssignments(assigned.data || []);
+          setContracts(agreements.data || []);
+          setCredentials(compliance.data || []);
+          setContractFacilities(agreementLocations.data || []);
         }
       } catch (err) {
         if (active) {
@@ -222,6 +295,11 @@ export default function ExecutiveDashboard() {
           setInspections([]);
           setFindings([]);
           setActions([]);
+          setContractors([]);
+          setAssignments([]);
+          setContracts([]);
+          setCredentials([]);
+          setContractFacilities([]);
         }
       } finally {
         if (active) setLoading(false);
@@ -229,17 +307,52 @@ export default function ExecutiveDashboard() {
     }
 
     loadDashboard();
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+    };
   }, [organizationId]);
 
   const inspectionFacility = useMemo(
-    () => new Map(inspections.map(i => [i.id, i.facility_id])),
+    () => new Map(
+      inspections.map(i => [i.id, i.facility_id])
+    ),
     [inspections]
   );
 
   const filtered = useMemo(() => {
     const match = id =>
       facilityFilter === 'all' || id === facilityFilter;
+
+    const locationAssignments = assignments.filter(
+      a => match(a.facility_id)
+    );
+
+    const assignedIds = new Set(
+      locationAssignments.map(a => a.contractor_id)
+    );
+
+    const selectedContractors = facilityFilter === 'all'
+      ? contractors
+      : contractors.filter(c => assignedIds.has(c.id));
+
+    const selectedIds = new Set(
+      selectedContractors.map(c => c.id)
+    );
+
+    const selectedContracts = contracts.filter(c => {
+      if (!selectedIds.has(c.contractor_id)) return false;
+      if (facilityFilter === 'all') return true;
+
+      const links = contractFacilities.filter(
+        link => link.contract_id === c.id
+      );
+
+      return (
+        !links.length ||
+        links.some(link => link.facility_id === facilityFilter)
+      );
+    });
 
     return {
       facilities: facilities.filter(f => match(f.id)),
@@ -249,41 +362,79 @@ export default function ExecutiveDashboard() {
         match(inspectionFacility.get(f.inspection_id))
       ),
       actions: actions.filter(a => match(a.facility_id)),
+      contractors: selectedContractors,
+      assignments: locationAssignments,
+      contracts: selectedContracts,
+      credentials: credentials.filter(c =>
+        selectedIds.has(c.contractor_id)
+      ),
     };
   }, [
-    facilityFilter, facilities, assets, inspections,
-    findings, actions, inspectionFacility,
+    facilityFilter,
+    facilities,
+    assets,
+    inspections,
+    findings,
+    actions,
+    contractors,
+    assignments,
+    contracts,
+    credentials,
+    contractFacilities,
+    inspectionFacility,
   ]);
 
   const stats = useMemo(() => {
-    const activeFindings = filtered.findings.filter(
+    const openFindings = filtered.findings.filter(
       f => !['resolved', 'verified'].includes(f.status)
+    );
+
+    const activeContracts = filtered.contracts.filter(
+      c => c.status === 'active'
+    );
+
+    const warnings = filtered.credentials.filter(
+      c => ['expired', 'expiring'].includes(
+        expiryStatus(c.expires_on)
+      )
     );
 
     return {
       facilities: filtered.facilities.length,
       assets: filtered.assets.length,
       inspections: filtered.inspections.length,
-      openFindings: activeFindings.length,
-      criticalFindings: activeFindings.filter(
+      openFindings: openFindings.length,
+      criticalFindings: openFindings.filter(
         f => f.severity === 'critical'
       ).length,
       openActions: filtered.actions.filter(
-        a => !['resolved', 'verified', 'completed', 'closed']
-          .includes(a.status)
+        a => !CLOSED.includes(a.status)
       ).length,
+      contractors: filtered.contractors.length,
+      activeContractors: filtered.contractors.filter(
+        c => c.status === 'active'
+      ).length,
+      activeContracts: activeContracts.length,
+      credentialWarnings: warnings.length,
+      contractValueByCurrency: activeContracts.reduce((totals, c) => {
+        if (c.contract_value == null) return totals;
+        const amount = Number(c.contract_value);
+        if (!Number.isFinite(amount)) return totals;
+        const currency = c.currency || 'GYD';
+        totals[currency] = (totals[currency] || 0) + amount;
+        return totals;
+      }, {}),
     };
   }, [filtered]);
 
   const conditionCounts = useMemo(() => {
-    const conditions = ['good', 'attention', 'critical', 'unknown', 'retired'];
-
-    return conditions.map(condition => ({
-      condition,
-      count: filtered.assets.filter(
-        a => a.condition === condition
-      ).length,
-    }));
+    return ['good', 'attention', 'critical', 'unknown', 'retired']
+      .map(condition => ({
+        condition,
+        count: filtered.assets.filter(
+          a => a.condition === condition
+        ).length,
+      }));
   }, [filtered.assets]);
 
   const facilityRows = useMemo(() => {
@@ -292,11 +443,23 @@ export default function ExecutiveDashboard() {
         i => i.facility_id === f.id
       );
 
-      const localIds = new Set(localInspections.map(i => i.id));
+      const localIds = new Set(
+        localInspections.map(i => i.id)
+      );
+
+      const localAssignments = assignments.filter(
+        a => a.facility_id === f.id
+      );
+
+      const contractorIds = new Set(
+        localAssignments.map(a => a.contractor_id)
+      );
 
       return {
         ...f,
-        assetCount: assets.filter(a => a.facility_id === f.id).length,
+        assetCount: assets.filter(
+          a => a.facility_id === f.id
+        ).length,
         inspectionCount: localInspections.length,
         findingCount: findings.filter(
           x =>
@@ -306,16 +469,27 @@ export default function ExecutiveDashboard() {
         actionCount: actions.filter(
           x =>
             x.facility_id === f.id &&
-            !['resolved', 'verified', 'completed', 'closed']
-              .includes(x.status)
+            !CLOSED.includes(x.status)
         ).length,
+        contractorCount: contractorIds.size,
       };
     });
-  }, [filtered.facilities, inspections, assets, findings, actions]);
+  }, [
+    filtered.facilities,
+    inspections,
+    assets,
+    findings,
+    actions,
+    assignments,
+  ]);
 
   const organizationName =
     organizations.find(o => o.id === organizationId)?.name ||
     'Enterprise';
+
+  const coveredLocations = facilityRows.filter(
+    f => f.contractorCount > 0
+  ).length;
 
   return (
     <main className="ent-page">
@@ -326,8 +500,8 @@ export default function ExecutiveDashboard() {
           </div>
           <h1>Executive Dashboard</h1>
           <p>
-            Company-wide operational visibility across facilities,
-            equipment, inspections and risk.
+            Company-wide visibility across facilities, equipment,
+            inspections, risk, contractors and agreements.
           </p>
         </div>
         <Link href="/collaboration/enterprise">
@@ -342,14 +516,12 @@ export default function ExecutiveDashboard() {
       )}
 
       <section className="ent-panel" style={{ marginBottom: 20 }}>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 16,
-            alignItems: 'end',
-          }}
-        >
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 16,
+          alignItems: 'end',
+        }}>
           <label style={{ flex: '1 1 240px' }}>
             <strong>Organization</strong>
             <select
@@ -363,7 +535,9 @@ export default function ExecutiveDashboard() {
               }}
             >
               {organizations.map(o => (
-                <option key={o.id} value={o.id}>{o.name}</option>
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
               ))}
             </select>
           </label>
@@ -383,7 +557,9 @@ export default function ExecutiveDashboard() {
             >
               <option value="all">All locations</option>
               {facilities.map(f => (
-                <option key={f.id} value={f.id}>{f.name}</option>
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
               ))}
             </select>
           </label>
@@ -396,32 +572,43 @@ export default function ExecutiveDashboard() {
         </section>
       ) : !error && (
         <>
-          <section
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                'repeat(auto-fit, minmax(175px, 1fr))',
-              gap: 14,
-              marginBottom: 20,
-            }}
-          >
+          <section style={{
+            display: 'grid',
+            gridTemplateColumns:
+              'repeat(auto-fit,minmax(175px,1fr))',
+            gap: 14,
+            marginBottom: 20,
+          }}>
             <Card title="Facilities" value={stats.facilities} />
             <Card title="Registered assets" value={stats.assets} />
             <Card title="Inspections" value={stats.inspections} />
             <Card title="Open findings" value={stats.openFindings} />
             <Card title="Critical findings" value={stats.criticalFindings} />
             <Card title="Open actions" value={stats.openActions} />
+
+            <Card
+              title="Contractors & vendors"
+              value={stats.contractors}
+              note={`${stats.activeContractors} active`}
+            />
+            <Card
+              title="Active contracts"
+              value={stats.activeContracts}
+              note="Unique agreements"
+            />
+            <Card
+              title="Compliance warnings"
+              value={stats.credentialWarnings}
+              note="Expired or expiring within 30 days"
+            />
+            <Card
+              title="Locations with contractors"
+              value={coveredLocations}
+              note={`Of ${stats.facilities} displayed locations`}
+            />
           </section>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                'repeat(auto-fit, minmax(300px, 1fr))',
-              gap: 16,
-              marginBottom: 20,
-            }}
-          >
+          <div style={panelGrid}>
             <section className="ent-panel">
               <h2>Asset condition overview</h2>
               <p>All equipment categories — {organizationName}</p>
@@ -429,7 +616,7 @@ export default function ExecutiveDashboard() {
               {conditionCounts.map(item => (
                 <StatusBar
                   key={item.condition}
-                  label={item.condition.replace('_', ' ').toUpperCase()}
+                  label={item.condition.toUpperCase()}
                   count={item.count}
                   total={stats.assets}
                   color={{
@@ -472,22 +659,97 @@ export default function ExecutiveDashboard() {
             </section>
           </div>
 
+          <div style={panelGrid}>
+            <section className="ent-panel">
+              <h2>Contractor coverage</h2>
+              <p>
+                Assigned contractors by location. A contractor serving
+                multiple locations is counted once at each location.
+              </p>
+
+              {facilityRows.length ? facilityRows.map(f => (
+                <StatusBar
+                  key={f.id}
+                  label={f.name}
+                  count={f.contractorCount}
+                  total={Math.max(
+                    1,
+                    ...facilityRows.map(x => x.contractorCount)
+                  )}
+                  color="#2872a7"
+                />
+              )) : (
+                <p>No facilities recorded.</p>
+              )}
+
+              <p>
+                <Link href="/collaboration/enterprise/contractors">
+                  Manage contractors & vendors →
+                </Link>
+              </p>
+            </section>
+
+            <section className="ent-panel">
+              <h2>Contracts & compliance</h2>
+              <p>
+                Financial exposure and credential oversight for
+                {facilityFilter === 'all'
+                  ? ' the organization.'
+                  : ' the selected facility.'}
+              </p>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2,minmax(0,1fr))',
+                gap: 12,
+                marginBottom: 16,
+              }}>
+                <Card
+                  title="Active agreements"
+                  value={stats.activeContracts}
+                />
+                <Card
+                  title="Credential warnings"
+                  value={stats.credentialWarnings}
+                />
+              </div>
+
+              <h3>Recorded active contract value</h3>
+
+              {Object.entries(stats.contractValueByCurrency).length ? (
+                Object.entries(stats.contractValueByCurrency)
+                  .map(([currency, amount]) => (
+                    <p key={currency}>
+                      <strong>{formatMoney(amount, currency)}</strong>
+                    </p>
+                  ))
+              ) : (
+                <p>No active contract values recorded.</p>
+              )}
+
+              <p style={{ fontSize: 13, color: '#52667e' }}>
+                Values represent recorded contract amounts, not actual
+                expenditure. Multi-location agreements are counted
+                once in each filtered view.
+              </p>
+            </section>
+          </div>
+
           <section className="ent-panel" style={{ marginBottom: 20 }}>
             <h2>Facility performance overview</h2>
             <p>
-              Compare operational records across company locations.
-              Select a facility to open its Facility 360 workspace.
+              Compare operational records and contractor coverage
+              across company locations. Select a facility to open
+              its Facility 360 workspace.
             </p>
 
             <div style={{ overflowX: 'auto' }}>
-              <table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  textAlign: 'left',
-                  minWidth: 690,
-                }}
-              >
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                textAlign: 'left',
+                minWidth: 790,
+              }}>
                 <thead>
                   <tr>
                     {[
@@ -497,14 +759,12 @@ export default function ExecutiveDashboard() {
                       'Inspections',
                       'Open findings',
                       'Open actions',
+                      'Contractors',
                     ].map(h => (
-                      <th
-                        key={h}
-                        style={{
-                          padding: 12,
-                          borderBottom: '1px solid #dce4ed',
-                        }}
-                      >
+                      <th key={h} style={{
+                        padding: 12,
+                        borderBottom: '1px solid #dce4ed',
+                      }}>
                         {h}
                       </th>
                     ))}
@@ -514,18 +774,14 @@ export default function ExecutiveDashboard() {
                 <tbody>
                   {facilityRows.map(f => (
                     <tr key={f.id}>
-                      <td
-                        style={{
-                          padding: 12,
-                          borderBottom: '1px solid #e8eef4',
-                        }}
-                      >
-                        <Link
-                          href={
-                            '/collaboration/enterprise/facilities/' +
-                            encodeURIComponent(f.id)
-                          }
-                        >
+                      <td style={{
+                        padding: 12,
+                        borderBottom: '1px solid #e8eef4',
+                      }}>
+                        <Link href={
+                          '/collaboration/enterprise/facilities/' +
+                          encodeURIComponent(f.id)
+                        }>
                           <strong>{f.name}</strong> ↗
                         </Link>
                       </td>
@@ -534,6 +790,7 @@ export default function ExecutiveDashboard() {
                       <td>{f.inspectionCount}</td>
                       <td>{f.findingCount}</td>
                       <td>{f.actionCount}</td>
+                      <td>{f.contractorCount}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -548,31 +805,56 @@ export default function ExecutiveDashboard() {
           <section className="ent-panel">
             <h2>Enterprise management modules</h2>
             <p>
-              Additional executive reporting will activate as the
-              corresponding company-wide modules are built.
+              Contractor management is now integrated. Other
+              company-wide modules will become available as
+              their operational workflows are implemented.
             </p>
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: 12,
-              }}
-            >
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns:
+                'repeat(auto-fit,minmax(240px,1fr))',
+              gap: 12,
+            }}>
+              <Link
+                href="/collaboration/enterprise/contractors"
+                style={{
+                  display: 'block',
+                  border: '1px solid #c6d8e8',
+                  borderRadius: 10,
+                  padding: 16,
+                  background: '#edf5fc',
+                  color: '#17314b',
+                  textDecoration: 'none',
+                }}
+              >
+                <strong>Contractors & vendors ↗</strong>
+                <p style={{ fontSize: 13 }}>
+                  Supplier register, facility assignments,
+                  contracts, compliance and Contractor 360°.
+                </p>
+                <span style={{
+                  fontSize: 12,
+                  color: '#176346',
+                  fontWeight: 700,
+                }}>
+                  Integrated
+                </span>
+              </Link>
+
               {futureModules.map(([name, description]) => (
-                <div
-                  key={name}
-                  style={{
-                    border: '1px solid #dce4ed',
-                    borderRadius: 10,
-                    padding: 16,
-                    background: '#f8fafc',
-                  }}
-                >
+                <div key={name} style={{
+                  border: '1px solid #dce4ed',
+                  borderRadius: 10,
+                  padding: 16,
+                  background: '#f8fafc',
+                }}>
                   <strong>{name}</strong>
                   <p style={{ fontSize: 13 }}>{description}</p>
-                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                  <span style={{
+                    fontSize: 12,
+                    color: '#64748b',
+                  }}>
                     Future integration
                   </span>
                 </div>
@@ -584,3 +866,4 @@ export default function ExecutiveDashboard() {
     </main>
   );
 }
+         
