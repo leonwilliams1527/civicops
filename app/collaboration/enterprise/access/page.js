@@ -35,6 +35,18 @@ const db = supabaseUrl && supabaseKey
     })
   : null;
 
+const ROLES = [
+  ['owner', 'Company Super Admin'],
+  ['admin', 'Company Administrator'],
+  ['board_director', 'Board Director'],
+  ['executive', 'Executive Leadership'],
+  ['location_manager', 'Location Manager'],
+  ['department_manager', 'Department Manager'],
+  ['manager', 'Manager (Legacy)'],
+  ['operator', 'Employee / Operator'],
+  ['viewer', 'Employee / Viewer'],
+];
+
 const PERMISSIONS = [
   {
     title: 'Leadership & Reporting',
@@ -74,21 +86,14 @@ const PERMISSIONS = [
     title: 'Administration',
     items: [
       ['access.manage', 'Manage employee permissions'],
-      ['settings.manage', 'Manage enterprise settings'],
+      ['settings.manage', 'Manage company settings'],
     ],
   },
 ];
 
-const ALL_KEYS = PERMISSIONS.flatMap(group =>
-  group.items.map(item => item[0])
+const PERMISSION_KEYS = PERMISSIONS.flatMap(
+  group => group.items.map(([key]) => key)
 );
-
-const ROLES = {
-  owner: 'Company Owner / Super Admin',
-  admin: 'Company Administrator',
-  manager: 'Manager',
-  member: 'Employee',
-};
 
 const fieldStyle = {
   width: '100%',
@@ -103,12 +108,19 @@ const fieldStyle = {
 
 const buttonStyle = {
   padding: '11px 18px',
-  background: '#174b70',
-  color: '#fff',
   border: 0,
   borderRadius: 9,
+  background: '#174b70',
+  color: '#fff',
   fontWeight: 700,
   cursor: 'pointer',
+};
+
+const secondaryButton = {
+  ...buttonStyle,
+  background: '#edf3f8',
+  color: '#17324d',
+  border: '1px solid #cbd5e1',
 };
 
 const cardStyle = {
@@ -118,12 +130,18 @@ const cardStyle = {
   padding: 18,
 };
 
-function grantKey(permission, scopeType, scopeId) {
-  return `${permission}|${scopeType}|${scopeId || ''}`;
-}
+const muted = { color: '#64748b', fontSize: 13 };
 
 function roleLabel(role) {
-  return ROLES[role] || role || 'Employee';
+  return ROLES.find(([id]) => id === role)?.[1] || role;
+}
+
+function permissionLabel(key) {
+  for (const group of PERMISSIONS) {
+    const item = group.items.find(([id]) => id === key);
+    if (item) return item[1];
+  }
+  return key;
 }
 
 export default function EnterpriseAccessManagement() {
@@ -138,9 +156,10 @@ export default function EnterpriseAccessManagement() {
   const [grants, setGrants] = useState([]);
 
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [roleDraft, setRoleDraft] = useState('');
   const [scopeType, setScopeType] = useState('organization');
   const [scopeId, setScopeId] = useState('');
-  const [selected, setSelected] = useState([]);
+  const [selectedPermissions, setSelectedPermissions] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -167,7 +186,7 @@ export default function EnterpriseAccessManagement() {
 
         if (membership.error) throw membership.error;
 
-        const adminOrgIds = [
+        const ids = [
           ...new Set(
             (membership.data || [])
               .filter(m => ['owner', 'admin'].includes(m.role))
@@ -177,11 +196,11 @@ export default function EnterpriseAccessManagement() {
 
         let orgs = [];
 
-        if (adminOrgIds.length) {
+        if (ids.length) {
           const result = await db
             .from('enterprise_organizations')
             .select('id,name')
-            .in('id', adminOrgIds)
+            .in('id', ids)
             .order('name');
 
           if (result.error) throw result.error;
@@ -194,7 +213,7 @@ export default function EnterpriseAccessManagement() {
         setOrganizations(orgs);
         setOrganizationId(orgs[0]?.id || '');
       } catch (err) {
-        if (active) setError(err.message || 'Initialization failed.');
+        if (active) setError(err.message || 'Unable to initialize.');
       } finally {
         if (active) setLoading(false);
       }
@@ -204,73 +223,82 @@ export default function EnterpriseAccessManagement() {
     return () => { active = false; };
   }, []);
 
+  async function loadCompany(orgId) {
+    const results = await Promise.all([
+      db.from('enterprise_members')
+        .select('organization_id,user_id,role')
+        .eq('organization_id', orgId),
+
+      db.from('enterprise_facilities')
+        .select('id,name')
+        .eq('organization_id', orgId)
+        .order('name'),
+
+      db.from('enterprise_departments')
+        .select('id,name')
+        .eq('organization_id', orgId)
+        .order('name'),
+
+      db.from('enterprise_access_grants')
+        .select('*')
+        .eq('organization_id', orgId),
+    ]);
+
+    for (const result of results) {
+      if (result.error) throw result.error;
+    }
+
+    const memberRows = results[0].data || [];
+    const ids = [...new Set(memberRows.map(m => m.user_id))];
+    let profileRows = [];
+
+    if (ids.length) {
+      const result = await db
+        .from('enterprise_employee_profiles')
+        .select('user_id,display_name,job_title')
+        .in('user_id', ids);
+
+      if (result.error) throw result.error;
+      profileRows = result.data || [];
+    }
+
+    return {
+      members: memberRows,
+      facilities: results[1].data || [],
+      departments: results[2].data || [],
+      grants: results[3].data || [],
+      profiles: profileRows,
+    };
+  }
+
+  function applyCompany(data) {
+    setMembers(data.members);
+    setFacilities(data.facilities);
+    setDepartments(data.departments);
+    setGrants(data.grants);
+    setProfiles(data.profiles);
+  }
+
   useEffect(() => {
     if (!organizationId) return;
 
     let active = true;
+    setLoading(true);
+    setError('');
+    setSelectedUserId('');
+    setSelectedPermissions([]);
 
-    async function load() {
-      setLoading(true);
-      setError('');
-      setSelectedUserId('');
-      setSelected([]);
-      setGrants([]);
-
-      try {
-        const results = await Promise.all([
-          db.from('enterprise_members')
-            .select('organization_id,user_id,role')
-            .eq('organization_id', organizationId),
-
-          db.from('enterprise_facilities')
-            .select('id,name')
-            .eq('organization_id', organizationId)
-            .order('name'),
-
-          db.from('enterprise_departments')
-            .select('id,name')
-            .eq('organization_id', organizationId)
-            .order('name'),
-
-          db.from('enterprise_access_grants')
-            .select('id,organization_id,user_id,permission_key,scope_type,scope_id,granted_by,created_at')
-            .eq('organization_id', organizationId),
-        ]);
-
-        for (const result of results) {
-          if (result.error) throw result.error;
-        }
-
-        const orgMembers = results[0].data || [];
-        const memberIds = [...new Set(orgMembers.map(m => m.user_id))];
-
-        let profileRows = [];
-
-        if (memberIds.length) {
-          const result = await db
-            .from('enterprise_employee_profiles')
-            .select('user_id,display_name,job_title')
-            .in('user_id', memberIds);
-
-          if (result.error) throw result.error;
-          profileRows = result.data || [];
-        }
-
-        if (!active) return;
-
-        setMembers(orgMembers);
-        setFacilities(results[1].data || []);
-        setDepartments(results[2].data || []);
-        setGrants(results[3].data || []);
-        setProfiles(profileRows);
-      } catch (err) {
-        if (active) setError(err.message || 'Unable to load access data.');
-      } finally {
+    loadCompany(organizationId)
+      .then(data => {
+        if (active) applyCompany(data);
+      })
+      .catch(err => {
+        if (active) setError(err.message || 'Unable to load company.');
+      })
+      .finally(() => {
         if (active) setLoading(false);
-      }
-    }
+      });
 
-    load();
     return () => { active = false; };
   }, [organizationId]);
 
@@ -278,9 +306,10 @@ export default function EnterpriseAccessManagement() {
     m => m.user_id === userId
   )?.role;
 
+  const isOwner = myRole === 'owner';
   const isAdministrator = ['owner', 'admin'].includes(myRole);
 
-  const employeeOptions = useMemo(() => {
+  const employees = useMemo(() => {
     return members.map(member => {
       const profile = profiles.find(
         p => p.user_id === member.user_id
@@ -295,9 +324,11 @@ export default function EnterpriseAccessManagement() {
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [members, profiles]);
 
-  const selectedEmployee = employeeOptions.find(
+  const employee = employees.find(
     m => m.user_id === selectedUserId
   );
+
+  const employeeIsOwner = employee?.role === 'owner';
 
   const scopeOptions = scopeType === 'facility'
     ? facilities
@@ -305,23 +336,30 @@ export default function EnterpriseAccessManagement() {
       ? departments
       : [];
 
-  const effectiveScopeId = scopeType === 'organization'
-    ? ''
-    : scopeId;
-
   const currentGrants = grants.filter(g =>
     g.user_id === selectedUserId &&
     g.scope_type === scopeType &&
-    (g.scope_id || '') === effectiveScopeId
+    (g.scope_id || '') === (
+      scopeType === 'organization' ? '' : scopeId
+    )
   );
 
-  const currentKeys = currentGrants.map(g => g.permission_key);
+  const currentKeys = currentGrants.map(
+    g => g.permission_key
+  );
+
+  const employeeGrants = grants.filter(
+    g => g.user_id === selectedUserId
+  );
 
   function chooseEmployee(id) {
+    const next = employees.find(m => m.user_id === id);
+
     setSelectedUserId(id);
+    setRoleDraft(next?.role || '');
     setScopeType('organization');
     setScopeId('');
-    setSelected(
+    setSelectedPermissions(
       grants.filter(g =>
         g.user_id === id &&
         g.scope_type === 'organization'
@@ -334,61 +372,107 @@ export default function EnterpriseAccessManagement() {
   function chooseScope(type, id = '') {
     setScopeType(type);
     setScopeId(id);
-
-    setSelected(
+    setSelectedPermissions(
       grants.filter(g =>
         g.user_id === selectedUserId &&
         g.scope_type === type &&
         (g.scope_id || '') === id
       ).map(g => g.permission_key)
     );
-
     setError('');
     setMessage('');
   }
 
   function togglePermission(key, checked) {
-    setSelected(previous => checked
+    setSelectedPermissions(previous => checked
       ? [...new Set([...previous, key])]
       : previous.filter(value => value !== key)
     );
   }
 
-  async function reloadGrants() {
-    const result = await db
-      .from('enterprise_access_grants')
-      .select('id,organization_id,user_id,permission_key,scope_type,scope_id,granted_by,created_at')
-      .eq('organization_id', organizationId);
+  async function refreshCompany() {
+    const data = await loadCompany(organizationId);
+    applyCompany(data);
+    return data;
+  }
 
-    if (result.error) throw result.error;
-    setGrants(result.data || []);
-    return result.data || [];
+  async function saveRole() {
+    if (!isOwner || !employee || saving) return;
+    if (roleDraft === employee.role) return;
+
+    if (!ROLES.some(([role]) => role === roleDraft)) {
+      setError('Select a valid role.');
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Change ${employee.name}'s role to ${roleLabel(roleDraft)}?`
+      )
+    ) return;
+
+    setSaving(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const result = await db.rpc('enterprise_assign_member_role', {
+        p_organization_id: organizationId,
+        p_user_id: selectedUserId,
+        p_new_role: roleDraft,
+      });
+
+      if (result.error) throw result.error;
+
+      const data = await refreshCompany();
+      const updated = data.members.find(
+        m => m.user_id === selectedUserId
+      );
+
+      if (updated?.role !== roleDraft) {
+        throw new Error('Role change could not be verified.');
+      }
+
+      setMessage('Employee role updated successfully.');
+    } catch (err) {
+      setError(err.message || 'Unable to change employee role.');
+      try {
+        const data = await refreshCompany();
+        setRoleDraft(
+          data.members.find(m => m.user_id === selectedUserId)?.role || ''
+        );
+      } catch (_) {}
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function savePermissions() {
-    if (!isAdministrator || !selectedEmployee || saving) return;
+    if (!isAdministrator || !employee || saving) return;
+
+    if (employeeIsOwner) {
+      setError('Super Admin access is inherited and cannot be edited here.');
+      return;
+    }
 
     if (scopeType !== 'organization' && !scopeId) {
-      setError('Select a location or department first.');
+      setError('Select a location or department.');
       return;
     }
 
-    if (!organizations.some(o => o.id === organizationId)) {
-      setError('Organization access is not authorized.');
-      return;
-    }
+    const desired = [...new Set(selectedPermissions)]
+      .filter(key => PERMISSION_KEYS.includes(key));
 
-    const desired = [...new Set(selected)]
-      .filter(key => ALL_KEYS.includes(key));
+    const additions = desired.filter(
+      key => !currentKeys.includes(key)
+    );
 
-    const toAdd = desired.filter(key => !currentKeys.includes(key));
-
-    const toDelete = currentGrants.filter(
+    const removals = currentGrants.filter(
       grant => !desired.includes(grant.permission_key)
     );
 
-    if (!toAdd.length && !toDelete.length) {
-      setMessage('No permission changes to save.');
+    if (!additions.length && !removals.length) {
+      setMessage('No changes to save.');
       return;
     }
 
@@ -397,9 +481,7 @@ export default function EnterpriseAccessManagement() {
     setMessage('');
 
     try {
-      // Deletions and additions are separate database operations.
-      // Refresh from the server after any partial failure.
-      for (const grant of toDelete) {
+      for (const grant of removals) {
         const result = await db
           .from('enterprise_access_grants')
           .delete()
@@ -409,12 +491,12 @@ export default function EnterpriseAccessManagement() {
 
         if (result.error) throw result.error;
         if (result.data?.length !== 1) {
-          throw new Error('Permission revocation was not confirmed.');
+          throw new Error('Revocation could not be verified.');
         }
       }
 
-      if (toAdd.length) {
-        const rows = toAdd.map(permission_key => ({
+      if (additions.length) {
+        const rows = additions.map(permission_key => ({
           organization_id: organizationId,
           user_id: selectedUserId,
           permission_key,
@@ -430,67 +512,56 @@ export default function EnterpriseAccessManagement() {
 
         if (result.error) throw result.error;
         if (result.data?.length !== rows.length) {
-          throw new Error('Some permission grants were not confirmed.');
+          throw new Error('Grant creation could not be verified.');
         }
       }
 
-      const refreshed = await reloadGrants();
-      setSelected(
-        refreshed.filter(g =>
+      const data = await refreshCompany();
+
+      setSelectedPermissions(
+        data.grants.filter(g =>
           g.user_id === selectedUserId &&
           g.scope_type === scopeType &&
-          (g.scope_id || '') === effectiveScopeId
+          (g.scope_id || '') === (
+            scopeType === 'organization' ? '' : scopeId
+          )
         ).map(g => g.permission_key)
       );
 
-      setMessage('Permissions saved successfully.');
+      setMessage('Employee permissions saved.');
     } catch (err) {
       setError(
-        (err.message || 'Permission update failed.') +
-        ' Some changes may have been applied. Reloading current access.'
+        (err.message || 'Permission save failed.') +
+        ' Changes may be partial; reload the current grants.'
       );
 
       try {
-        const refreshed = await reloadGrants();
-        setSelected(
-          refreshed.filter(g =>
+        const data = await refreshCompany();
+        setSelectedPermissions(
+          data.grants.filter(g =>
             g.user_id === selectedUserId &&
             g.scope_type === scopeType &&
-            (g.scope_id || '') === effectiveScopeId
+            (g.scope_id || '') === (
+              scopeType === 'organization' ? '' : scopeId
+            )
           ).map(g => g.permission_key)
         );
-      } catch (_) {
-        // Keep the original error visible.
-      }
+      } catch (_) {}
     } finally {
       setSaving(false);
     }
   }
 
-  function permissionLabel(key) {
-    for (const group of PERMISSIONS) {
-      const found = group.items.find(item => item[0] === key);
-      if (found) return found[1];
-    }
-    return key;
-  }
-
   function scopeLabel(grant) {
-    if (grant.scope_type === 'organization') {
-      return 'Entire company';
-    }
+    if (grant.scope_type === 'organization') return 'Entire company';
 
-    const items = grant.scope_type === 'facility'
+    const collection = grant.scope_type === 'facility'
       ? facilities
       : departments;
 
-    return items.find(item => item.id === grant.scope_id)?.name ||
+    return collection.find(item => item.id === grant.scope_id)?.name ||
       'Unknown scope';
   }
-
-  const employeeGrants = grants.filter(
-    g => g.user_id === selectedUserId
-  );
 
   return (
     <main className="ent-page">
@@ -501,15 +572,11 @@ export default function EnterpriseAccessManagement() {
           </div>
           <h1>Access Management</h1>
           <p>
-            Assign and revoke employee permissions within your company.
+            Manage company roles, locations, departments and permissions.
           </p>
         </div>
 
-        <div style={{
-          display: 'flex',
-          gap: 16,
-          flexWrap: 'wrap',
-        }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <Link href="/collaboration/enterprise/employees">
             Employee Directory →
           </Link>
@@ -523,26 +590,16 @@ export default function EnterpriseAccessManagement() {
       </header>
 
       {error && (
-        <div className="ent-error" role="alert">
-          {error}
-        </div>
+        <div className="ent-error" role="alert">{error}</div>
       )}
 
       {message && (
-        <p role="status" style={{ color: '#176346' }}>
-          {message}
-        </p>
+        <p role="status" style={{ color: '#176346' }}>{message}</p>
       )}
 
       {loading ? (
-        <section className="ent-panel">
-          Loading access management…
-        </section>
-      ) : !organizationId ? (
-        <section className="ent-panel">
-          You do not have company administrator access.
-        </section>
-      ) : !isAdministrator ? (
+        <section className="ent-panel">Loading access management…</section>
+      ) : !organizationId || !isAdministrator ? (
         <section className="ent-panel">
           Access Management is restricted to company administrators.
         </section>
@@ -552,8 +609,8 @@ export default function EnterpriseAccessManagement() {
             <label style={{ display: 'grid', gap: 7 }}>
               <strong>Company</strong>
               <select
-                value={organizationId}
                 style={fieldStyle}
+                value={organizationId}
                 disabled={saving}
                 onChange={e => {
                   setOrganizationId(e.target.value);
@@ -568,19 +625,37 @@ export default function EnterpriseAccessManagement() {
                 ))}
               </select>
             </label>
+
+            {isOwner && (
+              <div style={{
+                marginTop: 14,
+                padding: 14,
+                borderRadius: 10,
+                background: '#eaf5ef',
+                border: '1px solid #b9dec8',
+                color: '#175b3c',
+              }}>
+                <strong>Super Admin — Full company authority</strong>
+                <p style={{ margin: '5px 0 0', fontSize: 13 }}>
+                  Your owner role grants company-level administrative
+                  authority without requiring explicit permission
+                  checkboxes. Operational modules must also enforce
+                  this role in their database policies.
+                </p>
+              </div>
+            )}
           </section>
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
+            gridTemplateColumns:
+              'repeat(auto-fit, minmax(310px, 1fr))',
             gap: 16,
             alignItems: 'start',
           }}>
             <section className="ent-panel">
               <h2>Select employee</h2>
-              <p>
-                Choose a company employee to manage their access.
-              </p>
+              <p>Manage an employee within this company.</p>
 
               <select
                 value={selectedUserId}
@@ -589,130 +664,192 @@ export default function EnterpriseAccessManagement() {
                 onChange={e => chooseEmployee(e.target.value)}
               >
                 <option value="">Select an employee</option>
-                {employeeOptions.map(employee => (
-                  <option
-                    key={employee.user_id}
-                    value={employee.user_id}
-                  >
-                    {employee.name}
+                {employees.map(item => (
+                  <option key={item.user_id} value={item.user_id}>
+                    {item.name}
                   </option>
                 ))}
               </select>
 
-              {selectedEmployee && (
-                <div style={{ ...cardStyle, marginTop: 16 }}>
-                  <h3 style={{ margin: '0 0 6px' }}>
-                    {selectedEmployee.name}
-                  </h3>
+              {employee && (
+                <>
+                  <div style={{ ...cardStyle, marginTop: 16 }}>
+                    <h3 style={{ margin: '0 0 6px' }}>
+                      {employee.name}
+                    </h3>
 
-                  {selectedEmployee.jobTitle && (
-                    <p>{selectedEmployee.jobTitle}</p>
-                  )}
+                    {employee.jobTitle && (
+                      <p style={{ margin: '0 0 10px' }}>
+                        {employee.jobTitle}
+                      </p>
+                    )}
 
-                  <p style={{ marginBottom: 0 }}>
-                    <strong>Current role:</strong>{' '}
-                    {roleLabel(selectedEmployee.role)}
-                  </p>
-
-                  <p style={{
-                    color: '#64748b',
-                    fontSize: 13,
-                    marginBottom: 0,
-                  }}>
-                    Role editing will be introduced after
-                    delegated-role security validation.
-                  </p>
-                </div>
-              )}
-
-              {selectedEmployee && (
-                <div style={{ marginTop: 20 }}>
-                  <h3>Current explicit grants</h3>
-
-                  {!employeeGrants.length ? (
-                    <p style={{ color: '#64748b' }}>
-                      No additional permissions granted.
+                    <p style={{ margin: 0 }}>
+                      <strong>Current role:</strong>{' '}
+                      {roleLabel(employee.role)}
                     </p>
-                  ) : (
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      {employeeGrants.map(grant => (
-                        <div key={grant.id} style={{
-                          padding: 11,
-                          background: '#f1f5f9',
-                          borderRadius: 8,
-                          fontSize: 13,
-                        }}>
-                          <strong>
-                            {permissionLabel(grant.permission_key)}
-                          </strong>
-                          <div style={{ color: '#64748b' }}>
-                            {scopeLabel(grant)}
+
+                    {employeeIsOwner && (
+                      <p style={{
+                        marginBottom: 0,
+                        color: '#176346',
+                        fontSize: 13,
+                      }}>
+                        Full company access is inherited from the
+                        Super Admin role.
+                      </p>
+                    )}
+                  </div>
+
+                  <div style={{ ...cardStyle, marginTop: 16 }}>
+                    <h3 style={{ marginTop: 0 }}>
+                      Organizational role
+                    </h3>
+
+                    <label style={{ display: 'grid', gap: 8 }}>
+                      <strong style={{ fontSize: 13 }}>
+                        Assign role
+                      </strong>
+
+                      <select
+                        value={roleDraft}
+                        style={fieldStyle}
+                        disabled={!isOwner || saving}
+                        onChange={e => setRoleDraft(e.target.value)}
+                      >
+                        {ROLES.map(([id, label]) => (
+                          <option key={id} value={id}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <button
+                      type="button"
+                      style={{ ...buttonStyle, marginTop: 12 }}
+                      disabled={
+                        !isOwner ||
+                        saving ||
+                        roleDraft === employee.role
+                      }
+                      onClick={saveRole}
+                    >
+                      {saving ? 'Saving…' : 'Update employee role'}
+                    </button>
+
+                    <p style={{ ...muted, marginBottom: 0 }}>
+                      Only a Company Super Admin can assign roles.
+                      The final Super Admin cannot be demoted.
+                    </p>
+                  </div>
+
+                  <div style={{ marginTop: 20 }}>
+                    <h3>Current explicit grants</h3>
+
+                    {!employeeGrants.length ? (
+                      <p style={muted}>
+                        No additional permissions granted.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {employeeGrants.map(grant => (
+                          <div key={grant.id} style={{
+                            padding: 11,
+                            background: '#f1f5f9',
+                            borderRadius: 8,
+                            fontSize: 13,
+                          }}>
+                            <strong>
+                              {permissionLabel(grant.permission_key)}
+                            </strong>
+                            <div style={muted}>
+                              {scopeLabel(grant)}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </section>
 
             <section className="ent-panel">
               <h2>Permission editor</h2>
 
-              {!selectedEmployee ? (
-                <p style={{ color: '#64748b' }}>
-                  Select an employee to begin.
-                </p>
+              {!employee ? (
+                <p style={muted}>Select an employee to begin.</p>
+              ) : employeeIsOwner ? (
+                <div style={{
+                  ...cardStyle,
+                  background: '#f0f8f3',
+                  borderColor: '#b9dec8',
+                }}>
+                  <h3 style={{ marginTop: 0 }}>
+                    Full company access
+                  </h3>
+                  <p>
+                    This employee is a Company Super Admin.
+                    Their authority is inherited from their role.
+                  </p>
+                  <p style={muted}>
+                    Individual checkboxes are not required.
+                    This authority applies only within the
+                    employee's own company.
+                  </p>
+                </div>
               ) : (
                 <>
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    <label style={{ display: 'grid', gap: 7 }}>
-                      <strong>Access scope</strong>
+                  <label style={{ display: 'grid', gap: 8 }}>
+                    <strong>Access scope</strong>
+                    <select
+                      value={scopeType}
+                      style={fieldStyle}
+                      disabled={saving}
+                      onChange={e => chooseScope(e.target.value)}
+                    >
+                      <option value="organization">
+                        Entire company
+                      </option>
+                      <option value="facility">
+                        Specific location / facility
+                      </option>
+                      <option value="department">
+                        Specific department
+                      </option>
+                    </select>
+                  </label>
+
+                  {scopeType !== 'organization' && (
+                    <label style={{
+                      display: 'grid',
+                      gap: 8,
+                      marginTop: 14,
+                    }}>
+                      <strong>
+                        {scopeType === 'facility'
+                          ? 'Location / Facility'
+                          : 'Department'}
+                      </strong>
+
                       <select
-                        value={scopeType}
+                        value={scopeId}
                         style={fieldStyle}
                         disabled={saving}
-                        onChange={e => chooseScope(e.target.value)}
+                        onChange={e =>
+                          chooseScope(scopeType, e.target.value)
+                        }
                       >
-                        <option value="organization">
-                          Entire company
-                        </option>
-                        <option value="facility">
-                          Specific location / facility
-                        </option>
-                        <option value="department">
-                          Specific department
-                        </option>
+                        <option value="">Select {scopeType}</option>
+                        {scopeOptions.map(item => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
                       </select>
                     </label>
-
-                    {scopeType !== 'organization' && (
-                      <label style={{ display: 'grid', gap: 7 }}>
-                        <strong>
-                          {scopeType === 'facility'
-                            ? 'Location / Facility'
-                            : 'Department'}
-                        </strong>
-                        <select
-                          value={scopeId}
-                          style={fieldStyle}
-                          disabled={saving}
-                          onChange={e =>
-                            chooseScope(scopeType, e.target.value)
-                          }
-                        >
-                          <option value="">
-                            Select {scopeType}
-                          </option>
-                          {scopeOptions.map(item => (
-                            <option key={item.id} value={item.id}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                  </div>
+                  )}
 
                   {(scopeType === 'organization' || scopeId) && (
                     <>
@@ -720,23 +857,19 @@ export default function EnterpriseAccessManagement() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         gap: 10,
-                        alignItems: 'center',
                         margin: '20px 0 12px',
                       }}>
                         <strong>Available permissions</strong>
-                        <span style={{
-                          fontSize: 13,
-                          color: '#64748b',
-                        }}>
-                          {selected.length} selected
+                        <span style={muted}>
+                          {selectedPermissions.length} selected
                         </span>
                       </div>
 
                       {PERMISSIONS.map(group => (
-                        <div
-                          key={group.title}
-                          style={{ ...cardStyle, marginBottom: 12 }}
-                        >
+                        <div key={group.title} style={{
+                          ...cardStyle,
+                          marginBottom: 12,
+                        }}>
                           <h3 style={{ marginTop: 0 }}>
                             {group.title}
                           </h3>
@@ -746,18 +879,14 @@ export default function EnterpriseAccessManagement() {
                             gap: 12,
                           }}>
                             {group.items.map(([key, label]) => (
-                              <label
-                                key={key}
-                                style={{
-                                  display: 'flex',
-                                  gap: 10,
-                                  alignItems: 'center',
-                                  cursor: 'pointer',
-                                }}
-                              >
+                              <label key={key} style={{
+                                display: 'flex',
+                                gap: 10,
+                                alignItems: 'center',
+                              }}>
                                 <input
                                   type="checkbox"
-                                  checked={selected.includes(key)}
+                                  checked={selectedPermissions.includes(key)}
                                   disabled={saving}
                                   onChange={e =>
                                     togglePermission(
@@ -766,7 +895,7 @@ export default function EnterpriseAccessManagement() {
                                     )
                                   }
                                 />
-                                <span>{label}</span>
+                                {label}
                               </label>
                             ))}
                           </div>
@@ -784,13 +913,11 @@ export default function EnterpriseAccessManagement() {
                           : 'Save permissions'}
                       </button>
 
-                      <p style={{
-                        fontSize: 13,
-                        color: '#64748b',
-                      }}>
-                        Unchecking a permission removes the explicit
-                        grant for the selected scope. Existing role
-                        privileges may still apply.
+                      <p style={{ ...muted, marginTop: 12 }}>
+                        These checkboxes manage explicit access grants.
+                        Role-based permissions and older module policies
+                        may also apply until the full authorization
+                        integration is completed.
                       </p>
                     </>
                   )}
