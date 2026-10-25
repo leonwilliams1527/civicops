@@ -96,8 +96,14 @@ export default function EnterpriseWorkspace() {
   const [organizations, setOrganizations] = useState([]);
   const [organizationId, setOrganizationId] = useState('');
 
-  const [members, setMembers] = useState([]);
-  const [tasks, setTasks] = useState([]);
+
+const [members, setMembers] = useState([]);
+const [tasks, setTasks] = useState([]);
+const [departments, setDepartments] = useState([]);
+const [departmentMembers, setDepartmentMembers] = useState([]);
+const [profiles, setProfiles] = useState([]);
+const [taskDepartment, setTaskDepartment] = useState('');
+
 
   const [view, setView] = useState('mine');
   const [filter, setFilter] = useState('all');
@@ -172,12 +178,64 @@ export default function EnterpriseWorkspace() {
     };
   }, []);
 
-  async function loadWorkspace(orgId) {
-    if (!orgId) {
-      setTasks([]);
-      setMembers([]);
-      return;
-    }
+
+async function loadWorkspace(orgId) {
+  if (!orgId) {
+    setTasks([]);
+    setMembers([]);
+    setDepartments([]);
+    setDepartmentMembers([]);
+    setProfiles([]);
+    return;
+  }
+
+  const [taskResult, memberResult, departmentResult, assignmentResult] =
+    await Promise.all([
+      db.from('enterprise_tasks')
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false }),
+
+      db.from('enterprise_members')
+        .select('user_id,role')
+        .eq('organization_id', orgId),
+
+      db.from('enterprise_departments')
+        .select('id,name')
+        .eq('organization_id', orgId)
+        .order('name'),
+
+      db.from('enterprise_department_members')
+        .select('department_id,user_id')
+        .eq('organization_id', orgId),
+    ]);
+
+  for (const result of [
+    taskResult, memberResult, departmentResult, assignmentResult
+  ]) {
+    if (result.error) throw result.error;
+  }
+
+  const peopleIds = (memberResult.data || []).map(m => m.user_id);
+  let people = [];
+
+  if (peopleIds.length) {
+    const profileResult = await db
+      .from('enterprise_employee_profiles')
+      .select('user_id,display_name,job_title')
+      .in('user_id', peopleIds);
+
+    if (profileResult.error) throw profileResult.error;
+    people = profileResult.data || [];
+  }
+
+  setTasks(taskResult.data || []);
+  setMembers(memberResult.data || []);
+  setDepartments(departmentResult.data || []);
+  setDepartmentMembers(assignmentResult.data || []);
+  setProfiles(people);
+}
+
 
     const [taskResult, memberResult] = await Promise.all([
       db.from('enterprise_tasks')
@@ -197,47 +255,32 @@ export default function EnterpriseWorkspace() {
     setMembers(memberResult.data || []);
   }
 
-  useEffect(() => {
-    if (!organizationId) return;
 
-    let active = true;
+useEffect(() => {
+  if (!organizationId) return;
 
-    setLoading(true);
-    setError('');
+  let active = true;
 
-    async function load() {
-      try {
-        const [taskResult, memberResult] = await Promise.all([
-          db.from('enterprise_tasks')
-            .select('*')
-            .eq('organization_id', organizationId)
-            .order('created_at', { ascending: false }),
+  setLoading(true);
+  setError('');
 
-          db.from('enterprise_members')
-            .select('user_id,role')
-            .eq('organization_id', organizationId),
-        ]);
-
-        if (taskResult.error) throw taskResult.error;
-        if (memberResult.error) throw memberResult.error;
-
-        if (active) {
-          setTasks(taskResult.data || []);
-          setMembers(memberResult.data || []);
-        }
-      } catch (e) {
-        if (active) setError(e.message);
-      } finally {
-        if (active) setLoading(false);
-      }
+  async function load() {
+    try {
+      await loadWorkspace(organizationId);
+    } catch (e) {
+      if (active) setError(e.message);
+    } finally {
+      if (active) setLoading(false);
     }
+  }
 
-    load();
+  load();
 
-    return () => {
-      active = false;
-    };
-  }, [organizationId]);
+  return () => {
+    active = false;
+  };
+}, [organizationId]);
+
 
   const myTasks = useMemo(
     () => tasks.filter(t => t.assigned_to === userId),
@@ -356,6 +399,30 @@ export default function EnterpriseWorkspace() {
 
   const isManager = ['owner', 'admin', 'manager']
     .includes(myRole);
+
+const allowedDepartments = departments.filter(d =>
+  isManager ||
+  departmentMembers.some(m =>
+    m.department_id === d.id && m.user_id === userId
+  )
+);
+
+const assignableEmployees = members.filter(m =>
+  taskDepartment &&
+  departmentMembers.some(dm =>
+    dm.department_id === taskDepartment &&
+    dm.user_id === m.user_id
+  )
+);
+
+function employeeName(id) {
+  if (!id) return 'Unassigned';
+  if (id === userId) return 'You';
+
+  return profiles.find(p => p.user_id === id)?.display_name
+    || `Employee ${id.slice(0, 8)}`;
+}
+
 
   return (
     <main className="ent-page">
