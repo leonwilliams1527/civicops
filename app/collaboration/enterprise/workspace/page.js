@@ -320,7 +320,18 @@ useEffect(() => {
   async function createTask(e) {
     e.preventDefault();
 
-    if (busy || !organizationId || !form.title.trim()) return;
+    
+if (
+  busy ||
+  !organizationId ||
+  !form.title.trim() ||
+  !taskDepartment ||
+  !form.assigned_to
+) {
+  setError('Select a department and an assignee.');
+  return;
+}
+
 
     setBusy(true);
     setError('');
@@ -334,7 +345,10 @@ useEffect(() => {
           title: form.title.trim(),
           description: form.description.trim() || null,
           priority: form.priority,
-          assigned_to: form.assigned_to || userId,
+          
+assigned_to: form.assigned_to,
+department_id: taskDepartment,
+
           created_by: userId,
           due_date: form.due_date || null,
           status: 'todo',
@@ -342,11 +356,14 @@ useEffect(() => {
 
       if (result.error) throw result.error;
 
-      await loadWorkspace(organizationId);
+      
+await loadWorkspace(organizationId);
 
-      setForm(initialForm);
-      setShowForm(false);
-      setMessage('Task created successfully.');
+setForm(initialForm);
+setTaskDepartment('');
+setShowForm(false);
+setMessage('Task created successfully.');
+
     } catch (e) {
       setError(e.message || 'Unable to create task.');
     } finally {
@@ -576,6 +593,30 @@ function employeeName(id) {
                       'repeat(auto-fit,minmax(190px,1fr))',
                     gap: 12,
                   }}>
+                    
+<label>
+  <strong>Department *</strong>
+  <select
+    required
+    value={taskDepartment}
+    onChange={e => {
+      setTaskDepartment(e.target.value);
+      setForm(old => ({
+        ...old,
+        assigned_to: '',
+      }));
+    }}
+    style={inputStyle}
+  >
+    <option value="">Select department</option>
+    {allowedDepartments.map(d => (
+      <option key={d.id} value={d.id}>
+        {d.name}
+      </option>
+    ))}
+  </select>
+</label>
+    
                     <label>
                       <strong>Assign to</strong>
                       <select
@@ -587,19 +628,16 @@ function employeeName(id) {
                         style={inputStyle}
                       >
                         <option value="">
-                          Myself
+                          Select assignee
                         </option>
 
-                        {members
-                          .filter(m => m.user_id !== userId)
-                          .map(m => (
-                            <option
-                              key={m.user_id}
-                              value={m.user_id}
-                            >
-                              {displayName(m)}
-                            </option>
-                          ))}
+
+{assignableEmployees.map(m => (
+  <option key={m.user_id} value={m.user_id}>
+    {employeeName(m.user_id)}
+  </option>
+))}
+
                       </select>
                     </label>
 
@@ -637,13 +675,19 @@ function employeeName(id) {
                   </div>
 
                   <div>
-                    <button
-                      type="submit"
-                      disabled={busy || !form.title.trim()}
-                      style={buttonStyle}
-                    >
-                      {busy ? 'Saving…' : 'Create task'}
-                    </button>
+
+<button
+  type="submit"
+  disabled={
+    busy ||
+    !form.title.trim() ||
+    !taskDepartment ||
+    !form.assigned_to
+  }
+  style={buttonStyle}
+>
+  {busy ? 'Saving…' : 'Create task'}
+</button>
                   </div>
                 </div>
               </form>
@@ -762,17 +806,19 @@ function employeeName(id) {
                         margin: '14px 0',
                         color: '#52667e',
                       }}>
-                        <span>
-                          <strong>Assigned:</strong>{' '}
-                          {task.assigned_to === userId
-                            ? 'You'
-                            : displayName(
-                                members.find(
-                                  m => m.user_id ===
-                                    task.assigned_to
-                                )
-                              )}
-                        </span>
+
+<span>
+  <strong>Assigned:</strong>{' '}
+  {employeeName(task.assigned_to)}
+</span>
+
+<span>
+  <strong>Department:</strong>{' '}
+  {departments.find(
+    d => d.id === task.department_id
+  )?.name || 'Not assigned'}
+</span>
+
 
                         <span>
                           <strong>Due:</strong>{' '}
