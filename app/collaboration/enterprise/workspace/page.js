@@ -6,79 +6,75 @@ import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import '../enterprise.css';
 
-// CIVICOPS ENTERPRISE — PHASE 35.3
-// Employee workspace, department tasks, collaboration and activity.
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 async function proxyFetch(input, init) {
   const raw = typeof input === 'string' ? input : input.url;
   const parsed = new URL(raw);
 
   if (
-    supabaseUrl &&
-    parsed.hostname === new URL(supabaseUrl).hostname &&
+    url &&
+    parsed.hostname === new URL(url).hostname &&
     /^\/(auth|rest|storage)\/v1\//.test(parsed.pathname)
   ) {
     return fetch(
       '/api/supabase-proxy?path=' +
         encodeURIComponent(parsed.pathname) +
-        (parsed.search ? '&' + parsed.search.substring(1) : ''),
+        (parsed.search ? '&' + parsed.search.slice(1) : ''),
       init
     );
   }
-
   return fetch(input, init);
 }
 
-const db =
-  supabaseUrl && supabaseKey
-    ? createClient(supabaseUrl, supabaseKey, {
-        global: { fetch: proxyFetch },
-      })
-    : null;
+const db = url && key
+  ? createClient(url, key, { global: { fetch: proxyFetch } })
+  : null;
 
-const initialForm = {
-  title: '',
-  description: '',
-  assigned_to: '',
-  priority: 'medium',
-  due_date: '',
-};
-
-const statuses = [
+const STATUS = [
   ['todo', 'To do'],
   ['in_progress', 'In progress'],
   ['completed', 'Completed'],
   ['cancelled', 'Cancelled'],
 ];
 
-const priorities = ['low', 'medium', 'high', 'critical'];
+const PRIORITY = ['low', 'medium', 'high', 'critical'];
+
+const blankTask = {
+  title: '',
+  description: '',
+  department_id: '',
+  assigned_to: '',
+  priority: 'medium',
+  due_date: '',
+  status: 'todo',
+};
 
 const inputStyle = {
   width: '100%',
+  minWidth: 0,
   padding: '11px 12px',
   border: '1px solid #cbd5e1',
   borderRadius: 8,
-  background: '#ffffff',
+  background: '#fff',
   color: '#172b42',
   boxSizing: 'border-box',
   fontSize: 14,
 };
 
-const buttonStyle = {
+const primaryButton = {
   padding: '11px 17px',
   background: '#174b70',
+  color: '#fff',
   border: 0,
   borderRadius: 8,
-  color: '#ffffff',
   fontWeight: 700,
   cursor: 'pointer',
 };
 
 const secondaryButton = {
-  ...buttonStyle,
+  ...primaryButton,
   background: '#edf3f8',
   color: '#17324d',
   border: '1px solid #cbd5e1',
@@ -86,18 +82,28 @@ const secondaryButton = {
 
 const cardStyle = {
   padding: 18,
-  background: '#ffffff',
   border: '1px solid #dbe4ee',
   borderRadius: 12,
+  background: '#fff',
 };
 
-const mutedStyle = {
-  color: '#64748b',
-  fontSize: 13,
-};
+const muted = { color: '#64748b', fontSize: 13 };
+
+function todayString() {
+  const date = new Date();
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function dateString(value) {
+  return value ? String(value).slice(0, 10) : '';
+}
 
 function statusLabel(value) {
-  return statuses.find(([id]) => id === value)?.[1] || value || 'Unknown';
+  return STATUS.find(item => item[0] === value)?.[1] || value || 'Unknown';
 }
 
 function priorityColor(value) {
@@ -107,21 +113,17 @@ function priorityColor(value) {
   return '#e2e8f0';
 }
 
-function formatDate(value) {
-  return value ? String(value).substring(0, 10) : 'Not set';
+function timestamp(value) {
+  return value ? new Date(value).toLocaleString() : '';
 }
 
-function localDate() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function formatTimestamp(value) {
-  if (!value) return '';
-  return new Date(value).toLocaleString();
+function Field({ label, children }) {
+  return (
+    <label style={{ display: 'grid', gap: 7, minWidth: 0 }}>
+      <strong style={{ fontSize: 13 }}>{label}</strong>
+      {children}
+    </label>
+  );
 }
 
 export default function EnterpriseWorkspace() {
@@ -129,30 +131,28 @@ export default function EnterpriseWorkspace() {
   const [organizations, setOrganizations] = useState([]);
   const [organizationId, setOrganizationId] = useState('');
 
-  const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [members, setMembers] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [departmentMembers, setDepartmentMembers] = useState([]);
   const [profiles, setProfiles] = useState([]);
 
-  const [taskDepartment, setTaskDepartment] = useState('');
-  const [form, setForm] = useState(initialForm);
-  const [showForm, setShowForm] = useState(false);
-
-  const [view, setView] = useState('mine');
-  const [filter, setFilter] = useState('all');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
-  const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ ...blankTask });
 
   const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [editForm, setEditForm] = useState({ ...blankTask });
   const [comments, setComments] = useState([]);
   const [activity, setActivity] = useState([]);
   const [commentText, setCommentText] = useState('');
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [editDepartment, setEditDepartment] = useState('');
-  const [editAssignee, setEditAssignee] = useState('');
+
+  const [view, setView] = useState('mine');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [search, setSearch] = useState('');
 
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -162,32 +162,30 @@ export default function EnterpriseWorkspace() {
 
     async function initialize() {
       try {
-        if (!db) {
-          throw new Error('Supabase environment variables are missing.');
-        }
+        if (!db) throw new Error('Supabase configuration is missing.');
 
         const auth = await db.auth.getUser();
         if (auth.error) throw auth.error;
-
-        const user = auth.data?.user;
-        if (!user) {
+        if (!auth.data?.user) {
           throw new Error('Please sign in to access your workspace.');
         }
+
+        const uid = auth.data.user.id;
 
         const membership = await db
           .from('enterprise_members')
           .select('organization_id')
-          .eq('user_id', user.id);
+          .eq('user_id', uid);
 
         if (membership.error) throw membership.error;
 
         const ids = [
           ...new Set(
-            (membership.data || []).map(item => item.organization_id)
+            (membership.data || []).map(row => row.organization_id)
           ),
         ];
 
-        let available = [];
+        let orgs = [];
 
         if (ids.length) {
           const result = await db
@@ -197,16 +195,16 @@ export default function EnterpriseWorkspace() {
             .order('name');
 
           if (result.error) throw result.error;
-          available = result.data || [];
+          orgs = result.data || [];
         }
 
         if (!active) return;
 
-        setUserId(user.id);
-        setOrganizations(available);
-        setOrganizationId(available[0]?.id || '');
+        setUserId(uid);
+        setOrganizations(orgs);
+        setOrganizationId(orgs[0]?.id || '');
       } catch (err) {
-        if (active) setError(err.message || 'Unable to initialize.');
+        if (active) setError(err.message || 'Initialization failed.');
       } finally {
         if (active) setLoading(false);
       }
@@ -214,31 +212,26 @@ export default function EnterpriseWorkspace() {
 
     initialize();
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
-  async function loadWorkspace(orgId) {
-    if (!orgId) return;
-
+  async function fetchWorkspace(orgId) {
     const results = await Promise.all([
-      db
-        .from('enterprise_tasks')
+      db.from('enterprise_tasks')
         .select('*')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false }),
-      db
-        .from('enterprise_members')
+
+      db.from('enterprise_members')
         .select('user_id,role')
         .eq('organization_id', orgId),
-      db
-        .from('enterprise_departments')
+
+      db.from('enterprise_departments')
         .select('id,name')
         .eq('organization_id', orgId)
         .order('name'),
-      db
-        .from('enterprise_department_members')
+
+      db.from('enterprise_department_members')
         .select('department_id,user_id')
         .eq('organization_id', orgId),
     ]);
@@ -248,20 +241,17 @@ export default function EnterpriseWorkspace() {
     }
 
     const loadedMembers = results[1].data || [];
-    const employeeIds = [
-      ...new Set(loadedMembers.map(item => item.user_id)),
-    ];
-
+    const ids = [...new Set(loadedMembers.map(m => m.user_id))];
     let loadedProfiles = [];
 
-    if (employeeIds.length) {
-      const profileResult = await db
+    if (ids.length) {
+      const result = await db
         .from('enterprise_employee_profiles')
         .select('user_id,display_name,job_title')
-        .in('user_id', employeeIds);
+        .in('user_id', ids);
 
-      if (profileResult.error) throw profileResult.error;
-      loadedProfiles = profileResult.data || [];
+      if (result.error) throw result.error;
+      loadedProfiles = result.data || [];
     }
 
     return {
@@ -273,13 +263,7 @@ export default function EnterpriseWorkspace() {
     };
   }
 
-  async function refreshWorkspace(orgId = organizationId) {
-    const data = await loadWorkspace(orgId);
-    if (!data) return;
-
-    // Do not apply another organization's results.
-    if (orgId !== organizationId) return;
-
+  function applyWorkspace(data) {
     setTasks(data.tasks);
     setMembers(data.members);
     setDepartments(data.departments);
@@ -294,274 +278,169 @@ export default function EnterpriseWorkspace() {
     setLoading(true);
     setError('');
 
-    loadWorkspace(organizationId)
+    fetchWorkspace(organizationId)
       .then(data => {
-        if (!active || !data) return;
-        setTasks(data.tasks);
-        setMembers(data.members);
-        setDepartments(data.departments);
-        setDepartmentMembers(data.departmentMembers);
-        setProfiles(data.profiles);
+        if (active) applyWorkspace(data);
       })
       .catch(err => {
-        if (active) setError(err.message || 'Unable to load workspace.');
+        if (active) setError(err.message || 'Workspace load failed.');
       })
       .finally(() => {
         if (active) setLoading(false);
       });
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [organizationId, userId]);
 
-  const myRole = members.find(
-    member => member.user_id === userId
-  )?.role;
+  async function refreshWorkspace() {
+    const data = await fetchWorkspace(organizationId);
+    applyWorkspace(data);
+    return data;
+  }
 
+  const myRole = members.find(m => m.user_id === userId)?.role;
   const isManager = ['owner', 'admin', 'manager'].includes(myRole);
 
-  const allowedDepartments = useMemo(
-    () =>
-      departments.filter(department =>
-        isManager ||
-        departmentMembers.some(
-          member =>
-            member.department_id === department.id &&
-            member.user_id === userId
-        )
-      ),
-    [departments, departmentMembers, isManager, userId]
-  );
+  const allowedDepartments = useMemo(() => {
+    return departments.filter(d =>
+      isManager ||
+      departmentMembers.some(
+        m => m.department_id === d.id && m.user_id === userId
+      )
+    );
+  }, [departments, departmentMembers, isManager, userId]);
 
-  const assignableEmployees = useMemo(
-    () =>
-      members.filter(member =>
-        departmentMembers.some(
-          assignment =>
-            assignment.department_id === taskDepartment &&
-            assignment.user_id === member.user_id
-        )
-      ),
-    [members, departmentMembers, taskDepartment]
-  );
-
-  const editAssignableEmployees = useMemo(
-    () =>
-      members.filter(member =>
-        departmentMembers.some(
-          assignment =>
-            assignment.department_id === editDepartment &&
-            assignment.user_id === member.user_id
-        )
-      ),
-    [members, departmentMembers, editDepartment]
-  );
+  function employeesInDepartment(departmentId) {
+    return members.filter(m =>
+      departmentMembers.some(
+        dm =>
+          dm.department_id === departmentId &&
+          dm.user_id === m.user_id
+      )
+    );
+  }
 
   function employeeName(id) {
     if (!id) return 'Unassigned';
-
-    const profile = profiles.find(person => person.user_id === id);
-    const name = profile?.display_name || `Employee ${String(id).slice(0, 8)}`;
-
+    const profile = profiles.find(p => p.user_id === id);
+    const name = profile?.display_name ||
+      `Employee ${String(id).slice(0, 8)}`;
     return id === userId ? `${name} (You)` : name;
   }
 
   function departmentName(id) {
-    return (
-      departments.find(department => department.id === id)?.name ||
-      'Not assigned'
-    );
+    return departments.find(d => d.id === id)?.name || 'Not assigned';
   }
 
-  const today = localDate();
-
-  const myTasks = useMemo(
-    () => tasks.filter(task => task.assigned_to === userId),
-    [tasks, userId]
-  );
+  const myTasks = tasks.filter(t => t.assigned_to === userId);
+  const today = todayString();
 
   const inProgress = myTasks.filter(
-    task => task.status === 'in_progress'
+    t => t.status === 'in_progress'
   ).length;
 
   const overdue = myTasks.filter(
-    task =>
-      task.due_date &&
-      formatDate(task.due_date) < today &&
-      !['completed', 'cancelled'].includes(task.status)
+    t =>
+      t.due_date &&
+      dateString(t.due_date) < today &&
+      !['completed', 'cancelled'].includes(t.status)
   ).length;
 
   const completed = myTasks.filter(
-    task => task.status === 'completed'
+    t => t.status === 'completed'
   ).length;
 
   const visibleTasks = useMemo(() => {
     let result = tasks;
 
     if (view === 'mine') {
-      result = result.filter(task => task.assigned_to === userId);
+      result = result.filter(t => t.assigned_to === userId);
     } else if (view === 'created') {
-      result = result.filter(task => task.created_by === userId);
+      result = result.filter(t => t.created_by === userId);
     } else if (view === 'department') {
-      const ids = allowedDepartments.map(item => item.id);
-      result = result.filter(task => ids.includes(task.department_id));
+      const ids = allowedDepartments.map(d => d.id);
+      result = result.filter(t => ids.includes(t.department_id));
     } else if (!isManager) {
       result = result.filter(
-        task =>
-          task.assigned_to === userId ||
-          task.created_by === userId
+        t => t.assigned_to === userId || t.created_by === userId
       );
     }
 
     if (departmentFilter !== 'all') {
       result = result.filter(
-        task => task.department_id === departmentFilter
+        t => t.department_id === departmentFilter
       );
     }
 
-    if (filter !== 'all') {
-      result = result.filter(task => task.status === filter);
+    if (statusFilter !== 'all') {
+      result = result.filter(t => t.status === statusFilter);
     }
 
     if (search.trim()) {
-      const query = search.trim().toLowerCase();
+      const q = search.trim().toLowerCase();
       result = result.filter(
-        task =>
-          task.title?.toLowerCase().includes(query) ||
-          task.description?.toLowerCase().includes(query)
+        t =>
+          (t.title || '').toLowerCase().includes(q) ||
+          (t.description || '').toLowerCase().includes(q)
       );
     }
 
     return result;
   }, [
-    tasks,
-    view,
-    filter,
-    departmentFilter,
-    search,
-    userId,
-    isManager,
-    allowedDepartments,
+    tasks, view, userId, allowedDepartments, isManager,
+    departmentFilter, statusFilter, search,
   ]);
 
-  const selectedTask = tasks.find(task => task.id === selectedTaskId);
+  const selectedTask = tasks.find(t => t.id === selectedTaskId);
 
-  const canAccessTask = task =>
-    isManager ||
-    task?.assigned_to === userId ||
-    task?.created_by === userId;
+  const canEditAll = task =>
+    !!task &&
+    (isManager || task.created_by === userId);
 
-  const canReassignTask = task =>
-    isManager || task?.created_by === userId;
+  const canAccess = task =>
+    !!task &&
+    (isManager ||
+      task.created_by === userId ||
+      task.assigned_to === userId);
 
-  async function createTask(event) {
-    event.preventDefault();
+  const canEditStatus = task => canAccess(task);
+
+  function closeEditor() {
     if (busy) return;
-
-    if (
-      !organizationId ||
-      !form.title.trim() ||
-      !taskDepartment ||
-      !form.assigned_to
-    ) {
-      setError('Enter a title, department and assignee.');
-      return;
-    }
-
-    if (
-      !allowedDepartments.some(item => item.id === taskDepartment) ||
-      !assignableEmployees.some(
-        item => item.user_id === form.assigned_to
-      )
-    ) {
-      setError('Invalid department or assignee.');
-      return;
-    }
-
-    setBusy(true);
+    setSelectedTaskId('');
+    setComments([]);
+    setActivity([]);
+    setCommentText('');
     setError('');
-    setMessage('');
-
-    try {
-      const result = await db.from('enterprise_tasks').insert({
-        organization_id: organizationId,
-        title: form.title.trim(),
-        description: form.description.trim() || null,
-        department_id: taskDepartment,
-        assigned_to: form.assigned_to,
-        created_by: userId,
-        priority: form.priority,
-        due_date: form.due_date || null,
-        status: 'todo',
-      });
-
-      if (result.error) throw result.error;
-
-      await refreshWorkspace();
-
-      setForm({ ...initialForm });
-      setTaskDepartment('');
-      setShowForm(false);
-      setMessage('Task created successfully.');
-    } catch (err) {
-      setError(err.message || 'Unable to create task.');
-    } finally {
-      setBusy(false);
-    }
   }
 
-  async function updateTaskStatus(task, nextStatus) {
-    if (busy || task.status === nextStatus) return;
+  useEffect(() => {
+    if (!selectedTaskId) return;
 
-    if (!canAccessTask(task)) {
-      setError('You cannot update this task.');
-      return;
+    function onKeyDown(event) {
+      if (event.key === 'Escape' && !busy) closeEditor();
     }
 
-    setBusy(true);
-    setError('');
-    setMessage('');
+    document.addEventListener('keydown', onKeyDown);
 
-    try {
-      const result = await db
-        .from('enterprise_tasks')
-        .update({ status: nextStatus })
-        .eq('id', task.id)
-        .eq('organization_id', organizationId)
-        .select('id');
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
-      if (result.error) throw result.error;
-      if (!result.data?.length) {
-        throw new Error('Task update was not permitted.');
-      }
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [selectedTaskId, busy]);
 
-      await refreshWorkspace();
-
-      if (selectedTaskId === task.id) {
-        await loadTaskDetails(task.id, organizationId);
-      }
-
-      setMessage('Task status updated.');
-    } catch (err) {
-      setError(err.message || 'Unable to update task.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadTaskDetails(taskId, orgId) {
-    if (!taskId || !orgId) return;
-
+  async function loadDetails(taskId, orgId) {
     const [commentResult, activityResult] = await Promise.all([
-      db
-        .from('enterprise_task_comments')
+      db.from('enterprise_task_comments')
         .select('*')
         .eq('organization_id', orgId)
         .eq('task_id', taskId)
         .order('created_at', { ascending: true }),
-      db
-        .from('enterprise_task_activity')
+
+      db.from('enterprise_task_activity')
         .select('*')
         .eq('organization_id', orgId)
         .eq('task_id', taskId)
@@ -577,27 +456,38 @@ export default function EnterpriseWorkspace() {
     };
   }
 
+  async function refreshDetails(taskId = selectedTaskId) {
+    if (!taskId) return;
+    const data = await loadDetails(taskId, organizationId);
+    setComments(data.comments);
+    setActivity(data.activity);
+  }
+
   async function openTask(task) {
-    if (!canAccessTask(task)) {
-      setError('You cannot open this task.');
+    if (!canAccess(task)) {
+      setError('You do not have access to this task.');
       return;
     }
 
     setSelectedTaskId(task.id);
-    setEditDepartment(task.department_id || '');
-    setEditAssignee(task.assigned_to || '');
+    setEditForm({
+      title: task.title || '',
+      description: task.description || '',
+      status: task.status || 'todo',
+      priority: task.priority || 'medium',
+      due_date: dateString(task.due_date),
+      department_id: task.department_id || '',
+      assigned_to: task.assigned_to || '',
+    });
     setComments([]);
     setActivity([]);
     setCommentText('');
-    setDetailLoading(true);
     setError('');
+    setMessage('');
+    setDetailLoading(true);
 
     try {
-      const data = await loadTaskDetails(task.id, organizationId);
-      if (data) {
-        setComments(data.comments);
-        setActivity(data.activity);
-      }
+      await refreshDetails(task.id);
     } catch (err) {
       setError(err.message || 'Unable to load task details.');
     } finally {
@@ -605,28 +495,186 @@ export default function EnterpriseWorkspace() {
     }
   }
 
-  async function refreshDetails() {
-    if (!selectedTaskId) return;
-    const data = await loadTaskDetails(selectedTaskId, organizationId);
-    if (data) {
-      setComments(data.comments);
-      setActivity(data.activity);
+  async function createTask(event) {
+    event.preventDefault();
+    if (busy) return;
+
+    const f = createForm;
+    const validDepartment = allowedDepartments.some(
+      d => d.id === f.department_id
+    );
+    const validEmployee = employeesInDepartment(
+      f.department_id
+    ).some(m => m.user_id === f.assigned_to);
+
+    if (!f.title.trim() || !validDepartment || !validEmployee) {
+      setError('Select a valid title, department and assignee.');
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const result = await db.from('enterprise_tasks').insert({
+        organization_id: organizationId,
+        title: f.title.trim(),
+        description: f.description.trim() || null,
+        department_id: f.department_id,
+        assigned_to: f.assigned_to,
+        created_by: userId,
+        priority: f.priority,
+        due_date: f.due_date || null,
+        status: 'todo',
+      });
+
+      if (result.error) throw result.error;
+
+      await refreshWorkspace();
+      setCreateForm({ ...blankTask });
+      setCreateOpen(false);
+      setMessage('Task created successfully.');
+    } catch (err) {
+      setError(err.message || 'Unable to create task.');
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function addComment(event) {
+  async function saveTask(event) {
+    event.preventDefault();
+    if (!selectedTask || busy) return;
+
+    const fullEdit = canEditAll(selectedTask);
+    const statusEdit = canEditStatus(selectedTask);
+
+    if (!statusEdit) {
+      setError('You do not have permission to edit this task.');
+      return;
+    }
+
+    let changes;
+
+    if (fullEdit) {
+      const validDepartment = allowedDepartments.some(
+        d => d.id === editForm.department_id
+      );
+
+      const validEmployee = employeesInDepartment(
+        editForm.department_id
+      ).some(m => m.user_id === editForm.assigned_to);
+
+      if (!editForm.title.trim()) {
+        setError('Task title is required.');
+        return;
+      }
+
+      if (!validDepartment || !validEmployee) {
+        setError('Choose a valid department and assigned employee.');
+        return;
+      }
+
+      changes = {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || null,
+        status: editForm.status,
+        priority: editForm.priority,
+        due_date: editForm.due_date || null,
+        department_id: editForm.department_id,
+        assigned_to: editForm.assigned_to,
+      };
+    } else {
+      changes = { status: editForm.status };
+    }
+
+    setBusy(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const result = await db
+        .from('enterprise_tasks')
+        .update(changes)
+        .eq('id', selectedTask.id)
+        .eq('organization_id', organizationId)
+        .select('*')
+        .single();
+
+      if (result.error) throw result.error;
+
+      await refreshWorkspace();
+
+      const stillAccessible =
+        isManager ||
+        result.data.created_by === userId ||
+        result.data.assigned_to === userId;
+
+      if (stillAccessible) {
+        setEditForm({
+          title: result.data.title || '',
+          description: result.data.description || '',
+          status: result.data.status || 'todo',
+          priority: result.data.priority || 'medium',
+          due_date: dateString(result.data.due_date),
+          department_id: result.data.department_id || '',
+          assigned_to: result.data.assigned_to || '',
+        });
+
+        await refreshDetails(result.data.id);
+      } else {
+        setSelectedTaskId('');
+      }
+
+      setMessage('Task changes saved successfully.');
+    } catch (err) {
+      setError(err.message || 'Unable to save task changes.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateStatus(task, status) {
+    if (busy || !canEditStatus(task) || status === task.status) return;
+
+    setBusy(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const result = await db
+        .from('enterprise_tasks')
+        .update({ status })
+        .eq('id', task.id)
+        .eq('organization_id', organizationId)
+        .select('id');
+
+      if (result.error) throw result.error;
+      if (!result.data?.length) {
+        throw new Error('Status update was not permitted.');
+      }
+
+      await refreshWorkspace();
+      setMessage('Task status updated.');
+    } catch (err) {
+      setError(err.message || 'Unable to update task status.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function postComment(event) {
     event.preventDefault();
 
     if (
       busy ||
       !selectedTask ||
-      !canAccessTask(selectedTask) ||
+      !canAccess(selectedTask) ||
       !commentText.trim()
     ) return;
 
     setBusy(true);
     setError('');
-    setMessage('');
 
     try {
       const result = await db
@@ -642,113 +690,67 @@ export default function EnterpriseWorkspace() {
 
       setCommentText('');
       await refreshDetails();
-      setMessage('Comment added.');
+      setMessage('Comment posted.');
     } catch (err) {
-      setError(err.message || 'Unable to add comment.');
+      setError(err.message || 'Unable to post comment.');
     } finally {
       setBusy(false);
     }
   }
 
-  async function reassignTask(event) {
-    event.preventDefault();
+  function activityText(item) {
+    const oldValue = item.old_value;
+    const newValue = item.new_value;
 
-    if (!selectedTask || !canReassignTask(selectedTask) || busy) return;
-
-    const validDepartment = allowedDepartments.some(
-      item => item.id === editDepartment
-    );
-
-    const validEmployee = editAssignableEmployees.some(
-      item => item.user_id === editAssignee
-    );
-
-    if (!validDepartment || !validEmployee) {
-      setError('Select a valid department and employee.');
-      return;
-    }
-
-    setBusy(true);
-    setError('');
-    setMessage('');
-
-    try {
-      const result = await db
-        .from('enterprise_tasks')
-        .update({
-          department_id: editDepartment,
-          assigned_to: editAssignee,
-        })
-        .eq('id', selectedTask.id)
-        .eq('organization_id', organizationId)
-        .select('id');
-
-      if (result.error) throw result.error;
-      if (!result.data?.length) {
-        throw new Error('Reassignment was not permitted.');
-      }
-
-      await refreshWorkspace();
-
-      // A creator may retain access; otherwise close the task.
-      const retainsAccess =
-        isManager ||
-        selectedTask.created_by === userId ||
-        editAssignee === userId;
-
-      if (retainsAccess) {
-        await refreshDetails();
-      } else {
-        setSelectedTaskId('');
-      }
-
-      setMessage('Task assignment updated.');
-    } catch (err) {
-      setError(err.message || 'Unable to reassign task.');
-    } finally {
-      setBusy(false);
+    switch (item.event_type) {
+      case 'created':
+        return 'Created this task';
+      case 'commented':
+        return 'Added a comment';
+      case 'status':
+        return `Changed status from ${statusLabel(oldValue)} to ${statusLabel(newValue)}`;
+      case 'reassigned':
+        return `Reassigned from ${employeeName(oldValue)} to ${employeeName(newValue)}`;
+      case 'department':
+        return `Changed department from ${departmentName(oldValue)} to ${departmentName(newValue)}`;
+      case 'title':
+        return `Changed title from "${oldValue || ''}" to "${newValue || ''}"`;
+      case 'description':
+        return 'Updated task description';
+      case 'priority':
+        return `Changed priority from ${oldValue || 'none'} to ${newValue || 'none'}`;
+      case 'due_date':
+        return `Changed due date from ${oldValue || 'not set'} to ${newValue || 'not set'}`;
+      default:
+        return item.event_type || 'Updated task';
     }
   }
 
-  function activityDescription(item) {
-    if (item.event_type === 'created') return 'Created this task';
-    if (item.event_type === 'commented') return 'Added a comment';
-
-    if (item.event_type === 'status') {
-      return `Changed status from ${statusLabel(item.old_value)} to ${statusLabel(item.new_value)}`;
-    }
-
-    if (item.event_type === 'reassigned') {
-      return `Reassigned from ${employeeName(item.old_value)} to ${employeeName(item.new_value)}`;
-    }
-
-    if (item.event_type === 'department') {
-      return `Changed department from ${departmentName(item.old_value)} to ${departmentName(item.new_value)}`;
-    }
-
-    return item.event_type;
-  }
-
-  function changeOrganization(nextId) {
-    setOrganizationId(nextId);
+  function changeOrganization(id) {
+    setOrganizationId(id);
     setTasks([]);
     setMembers([]);
     setDepartments([]);
     setDepartmentMembers([]);
     setProfiles([]);
     setSelectedTaskId('');
-    setComments([]);
-    setActivity([]);
-    setShowForm(false);
-    setTaskDepartment('');
-    setForm({ ...initialForm });
+    setCreateOpen(false);
+    setCreateForm({ ...blankTask });
     setView('mine');
-    setFilter('all');
+    setStatusFilter('all');
     setDepartmentFilter('all');
     setSearch('');
     setError('');
     setMessage('');
   }
+
+  const formGrid = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: 14,
+  };
+
+  const modalOpen = !!selectedTaskId && !!selectedTask;
 
   return (
     <main className="ent-page">
@@ -774,8 +776,8 @@ export default function EnterpriseWorkspace() {
         </div>
       </header>
 
-      {error && (
-        <div className="ent-error" role="alert" style={{ marginBottom: 16 }}>
+      {error && !modalOpen && (
+        <div className="ent-error" role="alert">
           {error}
         </div>
       )}
@@ -787,28 +789,25 @@ export default function EnterpriseWorkspace() {
       )}
 
       <section className="ent-panel" style={{ marginBottom: 16 }}>
-        <label>
-          <strong>Organization</strong>
+        <Field label="Organization">
           <select
             value={organizationId}
             disabled={loading || organizations.length === 0}
-            onChange={event => changeOrganization(event.target.value)}
-            style={{ ...inputStyle, marginTop: 8 }}
+            onChange={e => changeOrganization(e.target.value)}
+            style={inputStyle}
           >
-            {organizations.length === 0 && (
+            {!organizations.length && (
               <option value="">No organization available</option>
             )}
-            {organizations.map(org => (
-              <option key={org.id} value={org.id}>
-                {org.name}
-              </option>
+            {organizations.map(o => (
+              <option key={o.id} value={o.id}>{o.name}</option>
             ))}
           </select>
-        </label>
+        </Field>
       </section>
 
       {loading ? (
-        <section className="ent-panel">Loading your workspace…</section>
+        <section className="ent-panel">Loading workspace…</section>
       ) : !organizationId ? (
         <section className="ent-panel">
           No Enterprise organization is available for this account.
@@ -835,7 +834,7 @@ export default function EnterpriseWorkspace() {
           </div>
 
           <section className="ent-panel" style={{ marginBottom: 16 }}>
-            <div style={{
+            <div className="ent-row" style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -843,182 +842,131 @@ export default function EnterpriseWorkspace() {
               gap: 12,
             }}>
               <div>
-                <h2 style={{ marginTop: 0 }}>Task management</h2>
-                <p>
-                  Create assignments and track work across your organization.
-                </p>
+                <h2>Task management</h2>
+                <p>Create assignments and track work across your organization.</p>
               </div>
               <button
                 type="button"
-                style={buttonStyle}
+                style={primaryButton}
                 onClick={() => {
-                  setShowForm(value => !value);
+                  setCreateOpen(v => !v);
                   setError('');
-                  setMessage('');
                 }}
               >
-                {showForm ? 'Cancel' : '+ Create task'}
+                {createOpen ? 'Cancel' : '+ Create task'}
               </button>
             </div>
 
-            {showForm && (
-              <form
-                onSubmit={createTask}
-                style={{ ...cardStyle, marginTop: 16 }}
-              >
-                <h3>Create a task</h3>
-                <div style={{ display: 'grid', gap: 14 }}>
-                  <label>
-                    <strong>Task title *</strong>
-                    <input
+            {createOpen && (
+              <form onSubmit={createTask} style={{
+                ...cardStyle, marginTop: 16, display: 'grid', gap: 14,
+              }}>
+                <h3 style={{ margin: 0 }}>Create a task</h3>
+
+                <Field label="Task title *">
+                  <input
+                    required
+                    maxLength={200}
+                    value={createForm.title}
+                    onChange={e => setCreateForm(f => ({
+                      ...f, title: e.target.value,
+                    }))}
+                    style={inputStyle}
+                  />
+                </Field>
+
+                <Field label="Description">
+                  <textarea
+                    rows={3}
+                    value={createForm.description}
+                    onChange={e => setCreateForm(f => ({
+                      ...f, description: e.target.value,
+                    }))}
+                    style={inputStyle}
+                  />
+                </Field>
+
+                <div style={formGrid}>
+                  <Field label="Department *">
+                    <select
                       required
-                      maxLength={200}
-                      value={form.title}
-                      onChange={event =>
-                        setForm(previous => ({
-                          ...previous,
-                          title: event.target.value,
-                        }))
-                      }
+                      value={createForm.department_id}
+                      onChange={e => setCreateForm(f => ({
+                        ...f,
+                        department_id: e.target.value,
+                        assigned_to: '',
+                      }))}
                       style={inputStyle}
-                    />
-                  </label>
-
-                  <label>
-                    <strong>Description</strong>
-                    <textarea
-                      rows={4}
-                      value={form.description}
-                      onChange={event =>
-                        setForm(previous => ({
-                          ...previous,
-                          description: event.target.value,
-                        }))
-                      }
-                      style={inputStyle}
-                    />
-                  </label>
-
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns:
-                      'repeat(auto-fit, minmax(190px, 1fr))',
-                    gap: 12,
-                  }}>
-                    <label>
-                      <strong>Department *</strong>
-                      <select
-                        required
-                        value={taskDepartment}
-                        onChange={event => {
-                          setTaskDepartment(event.target.value);
-                          setForm(previous => ({
-                            ...previous,
-                            assigned_to: '',
-                          }));
-                        }}
-                        style={inputStyle}
-                      >
-                        <option value="">Select department</option>
-                        {allowedDepartments.map(department => (
-                          <option key={department.id} value={department.id}>
-                            {department.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      <strong>Assign to *</strong>
-                      <select
-                        required
-                        value={form.assigned_to}
-                        disabled={!taskDepartment}
-                        onChange={event =>
-                          setForm(previous => ({
-                            ...previous,
-                            assigned_to: event.target.value,
-                          }))
-                        }
-                        style={inputStyle}
-                      >
-                        <option value="">Select assignee</option>
-                        {assignableEmployees.map(employee => (
-                          <option
-                            key={employee.user_id}
-                            value={employee.user_id}
-                          >
-                            {employeeName(employee.user_id)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      <strong>Priority</strong>
-                      <select
-                        value={form.priority}
-                        onChange={event =>
-                          setForm(previous => ({
-                            ...previous,
-                            priority: event.target.value,
-                          }))
-                        }
-                        style={inputStyle}
-                      >
-                        {priorities.map(priority => (
-                          <option key={priority} value={priority}>
-                            {priority.charAt(0).toUpperCase() +
-                              priority.slice(1)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      <strong>Due date</strong>
-                      <input
-                        type="date"
-                        value={form.due_date}
-                        onChange={event =>
-                          setForm(previous => ({
-                            ...previous,
-                            due_date: event.target.value,
-                          }))
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
-                  </div>
-
-                  {allowedDepartments.length === 0 && (
-                    <p style={mutedStyle}>
-                      No departments are available. Visit the Employee
-                      Directory to configure department membership.
-                    </p>
-                  )}
-
-                  {taskDepartment &&
-                    assignableEmployees.length === 0 && (
-                      <p style={mutedStyle}>
-                        No employees belong to this department yet.
-                      </p>
-                    )}
-
-                  <div>
-                    <button
-                      type="submit"
-                      disabled={
-                        busy ||
-                        !form.title.trim() ||
-                        !taskDepartment ||
-                        !form.assigned_to
-                      }
-                      style={buttonStyle}
                     >
-                      {busy ? 'Saving…' : 'Create task'}
-                    </button>
-                  </div>
+                      <option value="">Select department</option>
+                      {allowedDepartments.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Assign to *">
+                    <select
+                      required
+                      value={createForm.assigned_to}
+                      disabled={!createForm.department_id}
+                      onChange={e => setCreateForm(f => ({
+                        ...f, assigned_to: e.target.value,
+                      }))}
+                      style={inputStyle}
+                    >
+                      <option value="">Select employee</option>
+                      {employeesInDepartment(
+                        createForm.department_id
+                      ).map(m => (
+                        <option key={m.user_id} value={m.user_id}>
+                          {employeeName(m.user_id)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Priority">
+                    <select
+                      value={createForm.priority}
+                      onChange={e => setCreateForm(f => ({
+                        ...f, priority: e.target.value,
+                      }))}
+                      style={inputStyle}
+                    >
+                      {PRIORITY.map(p => (
+                        <option key={p} value={p}>
+                          {p[0].toUpperCase() + p.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Due date">
+                    <input
+                      type="date"
+                      value={createForm.due_date}
+                      onChange={e => setCreateForm(f => ({
+                        ...f, due_date: e.target.value,
+                      }))}
+                      style={inputStyle}
+                    />
+                  </Field>
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    style={primaryButton}
+                    disabled={
+                      busy ||
+                      !createForm.title.trim() ||
+                      !createForm.department_id ||
+                      !createForm.assigned_to
+                    }
+                  >
+                    {busy ? 'Saving…' : 'Create task'}
+                  </button>
                 </div>
               </form>
             )}
@@ -1036,15 +984,12 @@ export default function EnterpriseWorkspace() {
               <h2 style={{ margin: 0 }}>Task board</h2>
 
               <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 8,
-                alignItems: 'center',
+                display: 'flex', gap: 8, flexWrap: 'wrap',
               }}>
                 <select
                   aria-label="Task view"
                   value={view}
-                  onChange={event => setView(event.target.value)}
+                  onChange={e => setView(e.target.value)}
                   style={{ ...inputStyle, width: 'auto' }}
                 >
                   <option value="mine">Assigned to me</option>
@@ -1060,30 +1005,24 @@ export default function EnterpriseWorkspace() {
                 <select
                   aria-label="Department filter"
                   value={departmentFilter}
-                  onChange={event =>
-                    setDepartmentFilter(event.target.value)
-                  }
+                  onChange={e => setDepartmentFilter(e.target.value)}
                   style={{ ...inputStyle, width: 'auto' }}
                 >
                   <option value="all">All departments</option>
-                  {allowedDepartments.map(department => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
+                  {allowedDepartments.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </select>
 
                 <select
-                  aria-label="Task status filter"
-                  value={filter}
-                  onChange={event => setFilter(event.target.value)}
+                  aria-label="Status filter"
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
                   style={{ ...inputStyle, width: 'auto' }}
                 >
                   <option value="all">All statuses</option>
-                  {statuses.map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
+                  {STATUS.map(([id, label]) => (
+                    <option key={id} value={id}>{label}</option>
                   ))}
                 </select>
               </div>
@@ -1093,23 +1032,19 @@ export default function EnterpriseWorkspace() {
               aria-label="Search tasks"
               placeholder="Search tasks by title or description"
               value={search}
-              onChange={event => setSearch(event.target.value)}
+              onChange={e => setSearch(e.target.value)}
               style={{ ...inputStyle, marginBottom: 16 }}
             />
 
-            {visibleTasks.length === 0 ? (
-              <p style={mutedStyle}>
-                No tasks match the selected view.
-              </p>
+            {!visibleTasks.length ? (
+              <p style={muted}>No tasks match the selected view.</p>
             ) : (
               <div style={{ display: 'grid', gap: 12 }}>
                 {visibleTasks.map(task => {
-                  const isOverdue =
+                  const late =
                     task.due_date &&
-                    formatDate(task.due_date) < today &&
+                    dateString(task.due_date) < today &&
                     !['completed', 'cancelled'].includes(task.status);
-
-                  const canUpdate = canAccessTask(task);
 
                   return (
                     <article key={task.id} style={cardStyle}>
@@ -1117,7 +1052,6 @@ export default function EnterpriseWorkspace() {
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'flex-start',
-                        flexWrap: 'wrap',
                         gap: 12,
                       }}>
                         <div style={{ flex: 1 }}>
@@ -1130,9 +1064,9 @@ export default function EnterpriseWorkspace() {
                         </div>
 
                         <span style={{
-                          background: priorityColor(task.priority),
                           padding: '5px 10px',
                           borderRadius: 20,
+                          background: priorityColor(task.priority),
                           fontSize: 12,
                           fontWeight: 700,
                           textTransform: 'uppercase',
@@ -1145,9 +1079,8 @@ export default function EnterpriseWorkspace() {
                         display: 'flex',
                         flexWrap: 'wrap',
                         gap: 16,
-                        marginTop: 10,
-                        marginBottom: 14,
-                        ...mutedStyle,
+                        margin: '10px 0 14px',
+                        ...muted,
                       }}>
                         <span>
                           <strong>Assigned:</strong>{' '}
@@ -1161,52 +1094,47 @@ export default function EnterpriseWorkspace() {
                           <strong>Created by:</strong>{' '}
                           {employeeName(task.created_by)}
                         </span>
-                        <span>
+                        <span style={{
+                          color: late ? '#b91c1c' : undefined,
+                        }}>
                           <strong>Due:</strong>{' '}
-                          <span style={{
-                            color: isOverdue ? '#b91c1c' : 'inherit',
-                            fontWeight: isOverdue ? 700 : 400,
-                          }}>
-                            {formatDate(task.due_date)}
-                            {isOverdue ? ' — Overdue' : ''}
-                          </span>
+                          {dateString(task.due_date) || 'Not set'}
+                          {late ? ' — Overdue' : ''}
                         </span>
                       </div>
 
                       <div style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
                         gap: 10,
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
                       }}>
                         <strong style={{ fontSize: 13 }}>Status</strong>
 
                         <select
                           aria-label={`Status for ${task.title}`}
                           value={task.status || 'todo'}
-                          disabled={busy || !canUpdate}
-                          onChange={event =>
-                            updateTaskStatus(task, event.target.value)
+                          disabled={busy || !canEditStatus(task)}
+                          onChange={e =>
+                            updateStatus(task, e.target.value)
                           }
                           style={{ ...inputStyle, width: 'auto' }}
                         >
-                          {statuses.map(([id, label]) => (
+                          {STATUS.map(([id, label]) => (
                             <option key={id} value={id}>
                               {label}
                             </option>
                           ))}
                         </select>
 
-                        {canUpdate ? (
+                        {canAccess(task) && (
                           <button
                             type="button"
                             style={secondaryButton}
                             onClick={() => openTask(task)}
                           >
-                            Open task / Collaborate
+                            Open task / Edit
                           </button>
-                        ) : (
-                          <span style={mutedStyle}>View only</span>
                         )}
                       </div>
                     </article>
@@ -1215,144 +1143,235 @@ export default function EnterpriseWorkspace() {
               </div>
             )}
           </section>
+        </>
+      )}
 
-          {selectedTask && canAccessTask(selectedTask) && (
-            <section
-              className="ent-panel"
-              style={{ marginTop: 16 }}
-              aria-label="Task details"
-            >
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: 12,
-                alignItems: 'center',
-                flexWrap: 'wrap',
-              }}>
-                <div>
-                  <div className="ent-eyebrow">TASK DETAILS</div>
-                  <h2>{selectedTask.title}</h2>
-                </div>
-                <button
-                  type="button"
-                  style={secondaryButton}
-                  onClick={() => {
-                    setSelectedTaskId('');
-                    setComments([]);
-                    setActivity([]);
-                  }}
-                >
-                  Close details
-                </button>
-              </div>
-
-              <div style={{
-                ...cardStyle,
-                display: 'grid',
-                gap: 10,
-                marginBottom: 16,
-              }}>
-                <p style={{ margin: 0 }}>
-                  {selectedTask.description || 'No description provided.'}
+      {modalOpen && (
+        <div
+          className="ent-task-overlay"
+          onMouseDown={e => {
+            if (e.target === e.currentTarget) closeEditor();
+          }}
+        >
+          <section
+            className="ent-task-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ent-task-modal-title"
+          >
+            <div className="ent-task-modal-header">
+              <div>
+                <div className="ent-eyebrow">TASK WORKSPACE</div>
+                <h2 id="ent-task-modal-title" style={{ margin: '5px 0' }}>
+                  Edit task
+                </h2>
+                <p style={{ ...muted, margin: 0 }}>
+                  Update details, collaborate and review activity.
                 </p>
-                <div><strong>Status:</strong> {statusLabel(selectedTask.status)}</div>
-                <div><strong>Priority:</strong> {selectedTask.priority}</div>
-                <div><strong>Department:</strong> {departmentName(selectedTask.department_id)}</div>
-                <div><strong>Assigned to:</strong> {employeeName(selectedTask.assigned_to)}</div>
-                <div><strong>Created by:</strong> {employeeName(selectedTask.created_by)}</div>
-                <div><strong>Due:</strong> {formatDate(selectedTask.due_date)}</div>
               </div>
 
-              {canReassignTask(selectedTask) && (
-                <form
-                  onSubmit={reassignTask}
-                  style={{ ...cardStyle, marginBottom: 16 }}
+              <button
+                type="button"
+                className="ent-task-close"
+                aria-label="Close task editor"
+                onClick={closeEditor}
+                disabled={busy}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="ent-task-modal-body">
+              {error && (
+                <div
+                  className="ent-error"
+                  role="alert"
+                  style={{ marginBottom: 16 }}
                 >
-                  <h3 style={{ marginTop: 0 }}>Manage assignment</h3>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns:
-                      'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: 12,
-                    marginBottom: 12,
-                  }}>
-                    <label>
-                      <strong>Department</strong>
+                  {error}
+                </div>
+              )}
+
+              <form
+                onSubmit={saveTask}
+                style={{ display: 'grid', gap: 18 }}
+              >
+                <div className="ent-task-form-grid">
+                  <div className="ent-task-form-main">
+                    <Field label="Task title *">
+                      <input
+                        required
+                        maxLength={200}
+                        value={editForm.title}
+                        disabled={!canEditAll(selectedTask) || busy}
+                        onChange={e => setEditForm(f => ({
+                          ...f, title: e.target.value,
+                        }))}
+                        style={inputStyle}
+                      />
+                    </Field>
+
+                    <Field label="Description">
+                      <textarea
+                        rows={5}
+                        value={editForm.description}
+                        disabled={!canEditAll(selectedTask) || busy}
+                        onChange={e => setEditForm(f => ({
+                          ...f, description: e.target.value,
+                        }))}
+                        style={inputStyle}
+                        placeholder="Add instructions, context and expected outcomes…"
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="ent-task-form-side">
+                    <Field label="Status">
                       <select
-                        value={editDepartment}
-                        onChange={event => {
-                          setEditDepartment(event.target.value);
-                          setEditAssignee('');
-                        }}
+                        value={editForm.status}
+                        disabled={!canEditStatus(selectedTask) || busy}
+                        onChange={e => setEditForm(f => ({
+                          ...f, status: e.target.value,
+                        }))}
+                        style={inputStyle}
+                      >
+                        {STATUS.map(([id, label]) => (
+                          <option key={id} value={id}>{label}</option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <Field label="Priority">
+                      <select
+                        value={editForm.priority}
+                        disabled={!canEditAll(selectedTask) || busy}
+                        onChange={e => setEditForm(f => ({
+                          ...f, priority: e.target.value,
+                        }))}
+                        style={inputStyle}
+                      >
+                        {PRIORITY.map(p => (
+                          <option key={p} value={p}>
+                            {p[0].toUpperCase() + p.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <Field label="Due date">
+                      <input
+                        type="date"
+                        value={editForm.due_date}
+                        disabled={!canEditAll(selectedTask) || busy}
+                        onChange={e => setEditForm(f => ({
+                          ...f, due_date: e.target.value,
+                        }))}
+                        style={inputStyle}
+                      />
+                    </Field>
+
+                    <Field label="Department">
+                      <select
+                        value={editForm.department_id}
+                        disabled={!canEditAll(selectedTask) || busy}
+                        onChange={e => setEditForm(f => ({
+                          ...f,
+                          department_id: e.target.value,
+                          assigned_to: '',
+                        }))}
                         style={inputStyle}
                       >
                         <option value="">Select department</option>
-                        {allowedDepartments.map(department => (
-                          <option key={department.id} value={department.id}>
-                            {department.name}
-                          </option>
+                        {allowedDepartments.map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
                         ))}
                       </select>
-                    </label>
+                    </Field>
 
-                    <label>
-                      <strong>Assigned employee</strong>
+                    <Field label="Assigned employee">
                       <select
-                        value={editAssignee}
-                        onChange={event =>
-                          setEditAssignee(event.target.value)
+                        value={editForm.assigned_to}
+                        disabled={
+                          !canEditAll(selectedTask) ||
+                          !editForm.department_id ||
+                          busy
                         }
+                        onChange={e => setEditForm(f => ({
+                          ...f, assigned_to: e.target.value,
+                        }))}
                         style={inputStyle}
                       >
                         <option value="">Select employee</option>
-                        {editAssignableEmployees.map(employee => (
-                          <option
-                            key={employee.user_id}
-                            value={employee.user_id}
-                          >
-                            {employeeName(employee.user_id)}
+                        {employeesInDepartment(
+                          editForm.department_id
+                        ).map(m => (
+                          <option key={m.user_id} value={m.user_id}>
+                            {employeeName(m.user_id)}
                           </option>
                         ))}
                       </select>
-                    </label>
+                    </Field>
                   </div>
+                </div>
 
-                  <button
-                    type="submit"
-                    disabled={busy || !editDepartment || !editAssignee}
-                    style={buttonStyle}
-                  >
-                    {busy ? 'Saving…' : 'Save assignment'}
-                  </button>
-                </form>
-              )}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                  borderTop: '1px solid #e2e8f0',
+                  paddingTop: 16,
+                }}>
+                  <span style={muted}>
+                    Created by {employeeName(selectedTask.created_by)}
+                  </span>
 
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: 16,
-              }}>
-                <div style={cardStyle}>
+                  <div style={{
+                    display: 'flex', gap: 10, flexWrap: 'wrap',
+                  }}>
+                    <button
+                      type="button"
+                      style={secondaryButton}
+                      onClick={closeEditor}
+                      disabled={busy}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={primaryButton}
+                      disabled={busy}
+                    >
+                      {busy ? 'Saving…' : 'Save changes'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              <div className="ent-task-collaboration">
+                <section style={cardStyle}>
                   <h3 style={{ marginTop: 0 }}>Comments & updates</h3>
 
                   {detailLoading ? (
                     <p>Loading comments…</p>
                   ) : comments.length === 0 ? (
-                    <p style={mutedStyle}>No comments yet.</p>
+                    <p style={muted}>No comments yet.</p>
                   ) : (
-                    <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ display: 'grid', gap: 12 }}>
                       {comments.map(comment => (
                         <div
                           key={comment.id}
                           style={{
+                            paddingBottom: 12,
                             borderBottom: '1px solid #e2e8f0',
-                            paddingBottom: 10,
                           }}
                         >
-                          <strong>{employeeName(comment.author_id)}</strong>
-                          <div style={mutedStyle}>
-                            {formatTimestamp(comment.created_at)}
+                          <strong>
+                            {employeeName(comment.author_id)}
+                          </strong>
+                          <div style={muted}>
+                            {timestamp(comment.created_at)}
                           </div>
                           <p style={{ whiteSpace: 'pre-wrap' }}>
                             {comment.body}
@@ -1362,85 +1381,85 @@ export default function EnterpriseWorkspace() {
                     </div>
                   )}
 
-                  <form onSubmit={addComment} style={{ marginTop: 16 }}>
-                    <label>
-                      <strong>Add an update</strong>
+                  <form
+                    onSubmit={postComment}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Field label="Add an update">
                       <textarea
                         rows={4}
                         maxLength={5000}
                         value={commentText}
-                        onChange={event =>
-                          setCommentText(event.target.value)
-                        }
+                        onChange={e => setCommentText(e.target.value)}
                         placeholder="Share progress, questions or handover notes…"
                         style={inputStyle}
                       />
-                    </label>
+                    </Field>
                     <button
                       type="submit"
+                      style={{ ...primaryButton, marginTop: 10 }}
                       disabled={busy || !commentText.trim()}
-                      style={{ ...buttonStyle, marginTop: 10 }}
                     >
                       {busy ? 'Posting…' : 'Post comment'}
                     </button>
                   </form>
-                </div>
+                </section>
 
-                <div style={cardStyle}>
+                <section style={cardStyle}>
                   <h3 style={{ marginTop: 0 }}>Activity history</h3>
 
                   {detailLoading ? (
                     <p>Loading activity…</p>
                   ) : activity.length === 0 ? (
-                    <p style={mutedStyle}>
-                      No recorded activity yet. New changes will appear here.
+                    <p style={muted}>
+                      No recorded activity yet.
                     </p>
                   ) : (
-                    <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'grid', gap: 14 }}>
                       {activity.map(item => (
                         <div
                           key={item.id}
                           style={{
-                            borderLeft: '3px solid #b8ccde',
                             paddingLeft: 12,
+                            borderLeft: '3px solid #b8ccde',
                           }}
                         >
                           <strong>
                             {employeeName(item.actor_id)}
                           </strong>
-                          <p style={{ margin: '4px 0' }}>
-                            {activityDescription(item)}
+                          <p style={{ margin: '5px 0' }}>
+                            {activityText(item)}
                           </p>
-                          <div style={mutedStyle}>
-                            {formatTimestamp(item.created_at)}
+                          <div style={muted}>
+                            {timestamp(item.created_at)}
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
-              </div>
 
-              <button
-                type="button"
-                style={{ ...secondaryButton, marginTop: 16 }}
-                disabled={detailLoading || busy}
-                onClick={async () => {
-                  setDetailLoading(true);
-                  try {
-                    await refreshDetails();
-                  } catch (err) {
-                    setError(err.message || 'Unable to refresh details.');
-                  } finally {
-                    setDetailLoading(false);
-                  }
-                }}
-              >
-                Refresh comments & activity
-              </button>
-            </section>
-          )}
-        </>
+                  <button
+                    type="button"
+                    style={{ ...secondaryButton, marginTop: 16 }}
+                    disabled={busy || detailLoading}
+                    onClick={async () => {
+                      setDetailLoading(true);
+                      try {
+                        await refreshDetails();
+                      } catch (err) {
+                        setError(err.message || 'Refresh failed.');
+                      } finally {
+                        setDetailLoading(false);
+                      }
+                    }}
+                  >
+                    Refresh activity
+                  </button>
+                </section>
+              </div>
+            </div>
+          </section>
+        </div>
       )}
     </main>
   );
