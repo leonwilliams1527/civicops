@@ -1,0 +1,467 @@
+
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { createClient } from '@supabase/supabase-js';
+import '../enterprise.css';
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const proxy = async (input, init) => {
+  const raw = typeof input === 'string' ? input : input.url;
+  const parsed = new URL(raw);
+  if (url && parsed.hostname === new URL(url).hostname &&
+      /^\/(auth|rest|storage)\/v1\//.test(parsed.pathname)) {
+    return fetch(
+      '/api/supabase-proxy?path=' +
+        encodeURIComponent(parsed.pathname) +
+        (parsed.search ? '&' + parsed.search.slice(1) : ''),
+      init
+    );
+  }
+  return fetch(input, init);
+};
+
+const db = url && key
+  ? createClient(url, key, { global: { fetch: proxy } })
+  : null;
+
+const field = {
+  padding: 10,
+  width: '100%',
+  border: '1px solid #cbd5e1',
+  borderRadius: 8,
+  boxSizing: 'border-box',
+  background: '#fff',
+  color: '#172b42',
+};
+
+const button = {
+  background: '#174b70',
+  color: '#fff',
+  border: 0,
+  borderRadius: 8,
+  padding: '10px 15px',
+  cursor: 'pointer',
+  fontWeight: 600,
+};
+
+const card = {
+  padding: 18,
+  border: '1px solid #dce4ed',
+  background: '#fff',
+  borderRadius: 12,
+};
+
+export default function EmployeeDirectory() {
+  const [uid, setUid] = useState('');
+  const [orgs, setOrgs] = useState([]);
+  const [org, setOrg] = useState('');
+  const [members, setMembers] = useState([]);
+  const [profiles, setProfiles] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [name, setName] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [departmentName, setDepartmentName] = useState('');
+  const [newMember, setNewMember] = useState('');
+  const [newDepartment, setNewDepartment] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    async function init() {
+      try {
+        if (!db) throw Error('Supabase is not configured.');
+        const auth = await db.auth.getUser();
+        if (auth.error || !auth.data.user) {
+          throw Error('Please sign in.');
+        }
+        const id = auth.data.user.id;
+        const memberships = await db
+          .from('enterprise_members')
+          .select('organization_id')
+          .eq('user_id', id);
+        if (memberships.error) throw memberships.error;
+        const ids = [...new Set(
+          (memberships.data || []).map(m => m.organization_id)
+        )];
+        let organizations = [];
+        if (ids.length) {
+          const result = await db
+            .from('enterprise_organizations')
+            .select('id,name')
+            .in('id', ids)
+            .order('name');
+          if (result.error) throw result.error;
+          organizations = result.data || [];
+        }
+        if (!active) return;
+        setUid(id);
+        setOrgs(organizations);
+        setOrg(organizations[0]?.id || '');
+      } catch (e) {
+        if (active) setError(e.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    init();
+    return () => { active = false; };
+  }, []);
+
+  async function refresh(organizationId, currentUser) {
+    const [m, d, a] = await Promise.all([
+      db.from('enterprise_members')
+        .select('user_id,role')
+        .eq('organization_id', organizationId),
+      db.from('enterprise_departments')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('name'),
+      db.from('enterprise_department_members')
+        .select('*')
+        .eq('organization_id', organizationId),
+    ]);
+    for (const result of [m, d, a]) {
+      if (result.error) throw result.error;
+    }
+    const userIds = (m.data || []).map(x => x.user_id);
+    let people = [];
+    if (userIds.length) {
+      const p = await db
+        .from('enterprise_employee_profiles')
+        .select('*')
+        .in('user_id', userIds);
+      if (p.error) throw p.error;
+      people = p.data || [];
+    }
+    setMembers(m.data || []);
+    setDepartments(d.data || []);
+    setAssignments(a.data || []);
+    setProfiles(people);
+    const mine = people.find(p => p.user_id === currentUser);
+    setName(mine?.display_name || '');
+    setJobTitle(mine?.job_title || '');
+  }
+
+  useEffect(() => {
+    if (!org || !uid) return;
+    let active = true;
+    setLoading(true);
+    setError('');
+    Promise.all([
+      db.from('enterprise_members')
+        .select('user_id,role')
+        .eq('organization_id', org),
+      db.from('enterprise_departments')
+        .select('*').eq('organization_id', org).order('name'),
+      db.from('enterprise_department_members')
+        .select('*').eq('organization_id', org),
+    ]).then(async results => {
+      for (const result of results) {
+        if (result.error) throw result.error;
+      }
+      const ids = results[0].data.map(m => m.user_id);
+      let people = [];
+      if (ids.length) {
+        const p = await db.from('enterprise_employee_profiles')
+          .select('*').in('user_id', ids);
+        if (p.error) throw p.error;
+        people = p.data || [];
+      }
+      if (!active) return;
+      setMembers(results[0].data || []);
+      setDepartments(results[1].data || []);
+      setAssignments(results[2].data || []);
+      setProfiles(people);
+      const mine = people.find(p => p.user_id === uid);
+      setName(mine?.display_name || '');
+      setJobTitle(mine?.job_title || '');
+    }).catch(e => {
+      if (active) setError(e.message);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [org, uid]);
+
+  const role = members.find(m => m.user_id === uid)?.role;
+  const manager = ['owner', 'admin', 'manager'].includes(role);
+
+  function personName(userId) {
+    return profiles.find(p => p.user_id === userId)?.display_name
+      || `Employee ${userId.slice(0, 8)}`;
+  }
+
+  async function perform(operation, successText) {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await operation();
+      if (result.error) throw result.error;
+      await refresh(org, uid);
+      setMessage(successText);
+    } catch (e) {
+      setError(e.message || 'Unable to save changes.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveProfile(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    await perform(
+      () => db.from('enterprise_employee_profiles')
+        .upsert({
+          user_id: uid,
+          display_name: name.trim(),
+          job_title: jobTitle.trim() || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' }),
+      'Your profile was saved.'
+    );
+  }
+
+  async function createDepartment(e) {
+    e.preventDefault();
+    if (!manager || !departmentName.trim()) return;
+    await perform(
+      () => db.from('enterprise_departments').insert({
+        organization_id: org,
+        name: departmentName.trim(),
+      }),
+      'Department created.'
+    );
+    setDepartmentName('');
+  }
+
+  async function assignMember(e) {
+    e.preventDefault();
+    if (!manager || !newMember || !newDepartment) return;
+    await perform(
+      () => db.from('enterprise_department_members').insert({
+        organization_id: org,
+        department_id: newDepartment,
+        user_id: newMember,
+      }),
+      'Employee assigned to department.'
+    );
+    setNewMember('');
+    setNewDepartment('');
+  }
+
+  async function removeAssignment(assignment) {
+    if (!manager || !window.confirm('Remove this department assignment?')) {
+      return;
+    }
+    await perform(
+      () => db.from('enterprise_department_members')
+        .delete()
+        .eq('organization_id', org)
+        .eq('department_id', assignment.department_id)
+        .eq('user_id', assignment.user_id),
+      'Department assignment removed.'
+    );
+  }
+
+  return (
+    <main className="ent-page">
+      <header className="ent-header">
+        <div>
+          <div className="ent-eyebrow">
+            CIVICOPS / ENTERPRISE / PEOPLE
+          </div>
+          <h1>Employee Directory</h1>
+          <p>Employee profiles, departments and team assignments.</p>
+        </div>
+        <Link href="/collaboration/enterprise/workspace">
+          My Workspace →
+        </Link>
+      </header>
+
+      {error && <div className="ent-error" role="alert">{error}</div>}
+      {message && <p role="status" style={{ color: '#176346' }}>
+        {message}
+      </p>}
+
+      <section className="ent-panel" style={{ marginBottom: 16 }}>
+        <label>
+          <strong>Organization</strong>
+          <select value={org} onChange={e => setOrg(e.target.value)}
+            style={{ ...field, marginTop: 8 }}>
+            {orgs.map(o => <option key={o.id} value={o.id}>
+              {o.name}
+            </option>)}
+          </select>
+        </label>
+      </section>
+
+      {loading ? (
+        <section className="ent-panel">Loading employees…</section>
+      ) : !org ? (
+        <section className="ent-panel">
+          No Enterprise organization is available.
+        </section>
+      ) : (
+        <>
+          <section className="ent-panel" style={{ marginBottom: 16 }}>
+            <h2>My employee profile</h2>
+            <form onSubmit={saveProfile}
+              style={{ display: 'grid', gap: 12, maxWidth: 540 }}>
+              <label>
+                Display name *
+                <input required value={name}
+                  onChange={e => setName(e.target.value)}
+                  style={field} />
+              </label>
+              <label>
+                Job title
+                <input value={jobTitle}
+                  onChange={e => setJobTitle(e.target.value)}
+                  style={field} />
+              </label>
+              <div>
+                <button disabled={busy || !name.trim()} style={button}>
+                  Save my profile
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="ent-panel" style={{ marginBottom: 16 }}>
+            <h2>Departments ({departments.length})</h2>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {departments.map(d => (
+                <div key={d.id} style={card}>
+                  <strong>{d.name}</strong>
+                  <p style={{ marginBottom: 0 }}>
+                    {assignments.filter(a =>
+                      a.department_id === d.id
+                    ).length} employees
+                  </p>
+                </div>
+              ))}
+              {!departments.length && <p>No departments yet.</p>}
+            </div>
+
+            {manager && (
+              <form onSubmit={createDepartment}
+                style={{ display: 'flex', gap: 10, marginTop: 16,
+                  flexWrap: 'wrap' }}>
+                <input
+                  placeholder="New department name"
+                  value={departmentName}
+                  onChange={e => setDepartmentName(e.target.value)}
+                  style={{ ...field, flex: '1 1 240px' }}
+                  required
+                />
+                <button disabled={busy} style={button}>
+                  Add department
+                </button>
+              </form>
+            )}
+          </section>
+
+          <section className="ent-panel">
+            <h2>Employees ({members.length})</h2>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {members.map(m => {
+                const profile = profiles.find(
+                  p => p.user_id === m.user_id
+                );
+                const assigned = assignments.filter(
+                  a => a.user_id === m.user_id
+                );
+                return (
+                  <article key={m.user_id} style={card}>
+                    <div style={{ display: 'flex',
+                      justifyContent: 'space-between', gap: 12,
+                      flexWrap: 'wrap' }}>
+                      <div>
+                        <h3 style={{ margin: '0 0 5px' }}>
+                          {personName(m.user_id)}
+                          {m.user_id === uid ? ' (You)' : ''}
+                        </h3>
+                        <p style={{ margin: 0 }}>
+                          {profile?.job_title || 'Job title not set'}
+                        </p>
+                      </div>
+                      <span style={{ textTransform: 'capitalize' }}>
+                        {m.role}
+                      </span>
+                    </div>
+                    <p>
+                      <strong>Departments:</strong>{' '}
+                      {assigned.map(a =>
+                        departments.find(d =>
+                          d.id === a.department_id
+                        )?.name
+                      ).filter(Boolean).join(', ') || 'Not assigned'}
+                    </p>
+                    {manager && assigned.map(a => (
+                      <button key={a.department_id} type="button"
+                        disabled={busy}
+                        onClick={() => removeAssignment(a)}
+                        style={{ ...button, marginRight: 8,
+                          marginBottom: 6, background: '#edf2f7',
+                          color: '#17314b' }}>
+                        Remove from {
+                          departments.find(d =>
+                            d.id === a.department_id
+                          )?.name || 'department'
+                        }
+                      </button>
+                    ))}
+                  </article>
+                );
+              })}
+            </div>
+
+            {manager && (
+              <form onSubmit={assignMember}
+                style={{ ...card, marginTop: 18 }}>
+                <h3>Assign employee to department</h3>
+                <div style={{ display: 'grid', gap: 12,
+                  gridTemplateColumns:
+                    'repeat(auto-fit,minmax(190px,1fr))' }}>
+                  <select required value={newMember}
+                    onChange={e => setNewMember(e.target.value)}
+                    style={field}>
+                    <option value="">Select employee</option>
+                    {members.map(m => (
+                      <option key={m.user_id} value={m.user_id}>
+                        {personName(m.user_id)}
+                      </option>
+                    ))}
+                  </select>
+                  <select required value={newDepartment}
+                    onChange={e => setNewDepartment(e.target.value)}
+                    style={field}>
+                    <option value="">Select department</option>
+                    {departments.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button disabled={busy} style={button}>
+                    Assign to department
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
