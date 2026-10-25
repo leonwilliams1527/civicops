@@ -20,13 +20,17 @@ const municipalSections = [
 
 
 
+
 const enterpriseSections = [
-  ['/collaboration/enterprise/dashboard', 'Executive Dashboard', '▥'],
+  ['/collaboration/enterprise/workspace', 'My Workspace', '☑'],
+  ['/collaboration/enterprise/dashboard', 'Executive Dashboard', '▣'],
+  ['/collaboration/enterprise/employees', 'Employee Directory', '♙'],
   ['/collaboration/enterprise', 'Locations & Facilities', '▦'],
   ['/collaboration/enterprise/assets', 'Assets & Equipment', '◫'],
   ['/collaboration/enterprise/inspections', 'Inspections & Audits', '▤'],
   ['/collaboration/enterprise/contractors', 'Contractors & Vendors', '♧'],
 ];
+
 
 export default function CollaborationLayout({ children }) {
   const path = usePathname() || '/collaboration';
