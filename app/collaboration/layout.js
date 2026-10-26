@@ -3,7 +3,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import './shell.css';
 
 const municipalSections = [
@@ -35,13 +36,25 @@ const enterpriseSections = [
 export default function CollaborationLayout({ children }) {
   const path = usePathname() || '/collaboration';
   const [open, setOpen] = useState(false);
+  const [executiveAccess, setExecutiveAccess] = useState(false);
+  useEffect(() => {
+    if (!path.startsWith('/collaboration/enterprise')) return;
+    let active = true;
+    const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    db.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return;
+      const { data: rows } = await db.from('enterprise_members').select('role').eq('user_id', data.user.id).in('role', ['owner', 'admin']).limit(1);
+      if (active) setExecutiveAccess(Boolean(rows?.length));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [path]);
 
   const isEnterprise =
     path === '/collaboration/enterprise' ||
     path.startsWith('/collaboration/enterprise/');
 
   const sections = isEnterprise
-    ? enterpriseSections
+    ? enterpriseSections.filter(item => item[1] !== 'Executive Dashboard' || executiveAccess)
     : municipalSections;
 
   
