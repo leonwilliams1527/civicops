@@ -82,6 +82,9 @@ export default function EmployeeDirectory() {
   const [inviteJobTitle, setInviteJobTitle] = useState('');
   const [inviteRole, setInviteRole] = useState('viewer');
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [revokeBusy, setRevokeBusy] = useState('');
   const [inviteError, setInviteError] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
 
@@ -416,6 +419,58 @@ export default function EmployeeDirectory() {
     );
   }
 
+  async function loadPendingInvites(organizationId) {
+    if (!db || !organizationId) return;
+    setInvitesLoading(true);
+    try {
+      const { data } = await db.auth.getSession();
+      if (!data.session?.access_token) throw Error('Sign in again to manage invitations.');
+      const response = await fetch('/api/enterprise/invitations?organization_id=' + encodeURIComponent(organizationId), {
+        headers: { Authorization: 'Bearer ' + data.session.access_token },
+        cache: 'no-store'
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Unable to load invitations.');
+      setPendingInvites(result.invitations || []);
+    } catch (e) {
+      setInviteError(e.message || 'Unable to load invitations.');
+    } finally {
+      setInvitesLoading(false);
+    }
+  }
+
+  async function revokePendingInvitation(invitation) {
+    if (!canInvite || revokeBusy || !window.confirm('Revoke invitation for ' + invitation.email + '? The activation link will stop working.')) return;
+    setRevokeBusy(invitation.id);
+    setInviteError('');
+    setInviteMessage('');
+    try {
+      const { data } = await db.auth.getSession();
+      if (!data.session?.access_token) throw Error('Sign in again to manage invitations.');
+      const response = await fetch('/api/enterprise/invitations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + data.session.access_token },
+        body: JSON.stringify({ organization_id: org, invitation_id: invitation.id, action: 'revoke' })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw Error(result.error || 'Unable to revoke invitation.');
+      setPendingInvites(previous => previous.filter(item => item.id !== invitation.id));
+      setInviteMessage('Invitation revoked. Its activation link can no longer be accepted.');
+    } catch (e) {
+      setInviteError(e.message || 'Unable to revoke invitation.');
+    } finally {
+      setRevokeBusy('');
+    }
+  }
+
+  useEffect(() => {
+    if (!org || !canInvite) {
+      setPendingInvites([]);
+      return;
+    }
+    loadPendingInvites(org);
+  }, [org, canInvite]);
+
   async function inviteEmployee(e) {
     e.preventDefault();
 
@@ -489,6 +544,7 @@ export default function EmployeeDirectory() {
       setInviteEmail('');
       setInviteJobTitle('');
       setInviteRole('viewer');
+      await loadPendingInvites(org);
     } catch (e) {
       setInviteError(
         e.message || 'Unable to invite employee.'
@@ -607,6 +663,32 @@ export default function EmployeeDirectory() {
               </div>
             </form>
           </section>
+
+          {canInvite && (
+            <section className="ent-panel" style={{ marginBottom: 16 }}>
+              <h2>Pending invitations</h2>
+              <p>Administrators can revoke invitations before employees accept them.</p>
+              {invitesLoading ? <p>Loading invitations…</p> : pendingInvites.length === 0 ? (
+                <p>No pending invitations.</p>
+              ) : (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {pendingInvites.map(invitation => (
+                    <div key={invitation.id} style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <div>
+                        <strong>{invitation.display_name || invitation.email}</strong>
+                        <div>{invitation.email}</div>
+                        <small>Pending · {invitation.proposed_role} · Expires {new Date(invitation.expires_at).toLocaleDateString()}</small>
+                      </div>
+                      <button type="button" disabled={Boolean(revokeBusy)} onClick={() => revokePendingInvitation(invitation)}
+                        style={{ ...button, background: '#9f2828' }}>
+                        {revokeBusy === invitation.id ? 'Revoking…' : 'Revoke invitation'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           {canInvite && (
             <section
