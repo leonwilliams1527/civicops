@@ -107,19 +107,22 @@ export default function Activate() {
           params.get('error_description') ||
           hash.get('error_description');
 
-        if (linkError) {
-          throw new Error(
-            linkError.replace(/\+/g, ' ')
-          );
-        }
+        // An invite link may be consumed while the browser has already
+        // established a valid session. Prefer the verified session when
+        // resuming a pending invitation; never bypass token validation.
+        const existing = await db.auth.getSession();
+        let sessionEstablished = Boolean(existing.data?.session);
 
-        let sessionEstablished = false;
+        if (linkError && !sessionEstablished) {
+          throw new Error(linkError.replace(/\+/g, ' '));
+        }
 
         // -----------------------------------------
         // 1. Handle implicit Supabase auth links
         // -----------------------------------------
 
         if (
+          !sessionEstablished &&
           hash.get('access_token') &&
           hash.get('refresh_token')
         ) {
