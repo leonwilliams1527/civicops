@@ -1,117 +1,360 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { randomBytes, createHash } from 'node:crypto';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
-function respond(message, status) {
-  return NextResponse.json({ error: message }, { status });
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Initial employee roles only.
+// Administrative roles must be granted separately
+// through authorized access management.
+const ALLOWED_ROLES = new Set([
+  'viewer',
+  'operator'
+]);
+
+function respondError(message, status = 400) {
+  return NextResponse.json(
+    { success: false, error: message },
+    {
+      status,
+      headers: { 'Cache-Control': 'no-store' }
+    }
+  );
+}
+
+function createSupabaseClient(key) {
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
+}
+
+function generateInvitationToken() {
+  const token = randomBytes(32).toString('hex');
+
+  const tokenHash = createHash('sha256')
+    .update(token)
+    .digest('hex');
+
+  return { token, tokenHash };
+}
+
+async function getAuthenticatedAdmin(request, adminClient) {
+  const authorization =
+    request.headers.get('authorization') || '';
+
+  const accessToken = authorization.startsWith('Bearer ')
+    ? authorization.slice(7).trim()
+    : '';
+
+  if (!accessToken) {
+    return {
+      error: 'Authentication required.',
+      status: 401
+    };
+  }
+
+  const authClient = createSupabaseClient(anonKey);
+
+  const { data, error } =
+    await authClient.auth.getUser(accessToken);
+
+  if (error || !data.user?.id) {
+    return {
+      error: 'Invalid or expired session.',
+      status: 401
+    };
+  }
+
+  return { user: data.user };
+}
+
+async function verifyCompanyAdmin(
+  adminClient,
+  organizationId,
+  userId
+) {
+  const { data, error } = await adminClient
+    .from('enterprise_members')
+    .select('role')
+    .eq('organization_id', organizationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      error: 'Unable to verify administrator access.',
+      status: 500
+    };
+  }
+
+  if (!['owner', 'admin'].includes(data?.role)) {
+    return {
+      error: 'Company administrator permission required.',
+      status: 403
+    };
+  }
+
+  return { authorized: true };
 }
 
 export async function POST(request) {
   try {
-    if (!url || !anonKey || !serviceKey) {
-      return respond('Invitation service is not configured.', 503);
+    if (!url || !anonKey || !serviceKey || !appUrl) {
+      return respondError(
+        'Invitation service is not fully configured.',
+        503
+      );
     }
 
-    const authorization = request.headers.get('authorization') || '';
-    const token = authorization.startsWith('Bearer ')
-      ? authorization.slice(7)
-      : '';
+    const adminClient = createSupabaseClient(serviceKey);
 
-    if (!token) return respond('Authentication required.', 401);
+    // 1. Authenticate the requesting administrator.
+    const auth = await getAuthenticatedAdmin(
+      request,
+      adminClient
+    );
 
-    const authClient = createClient(url, anonKey, {
-      auth: { persistSession: false }
-    });
-
-    const adminClient = createClient(url, serviceKey, {
-      auth: { persistSession: false }
-    });
-
-    const { data: identity, error: identityError } =
-      await authClient.auth.getUser(token);
-
-    if (identityError || !identity.user) {
-      return respond('Invalid or expired session.', 401);
+    if (auth.error) {
+      return respondError(auth.error, auth.status);
     }
 
-    const body = await request.json();
-    const organizationId = body.organization_id;
-    const email = String(body.email || '').trim().toLowerCase();
+    // 2. Read invitation details.
+    let body;
 
-    if (
-      typeof organizationId !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(organizationId)
-    ) {
-      return respond('Valid company ID required.', 400);
+    try {
+      body = await request.json();
+    } catch {
+      return respondError('Invalid request body.', 400);
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return respond('Valid employee email required.', 400);
+    const organizationId =
+      String(body.organization_id || '').trim();
+
+    const email =
+      String(body.email || '').trim().toLowerCase();
+
+    const displayName =
+      String(body.display_name || '').trim();
+
+    const jobTitle =
+      String(body.job_title || '').trim();
+
+    const proposedRole =
+      String(body.role || 'viewer').trim();
+
+    if (!UUID_PATTERN.test(organizationId)) {
+      return respondError('Valid company ID required.', 400);
     }
 
-    // Check authorization against the selected company.
-    const { data: membership, error: membershipError } =
-      await adminClient
-        .from('enterprise_members')
-        .select('role')
-        .eq('organization_id', organizationId)
-        .eq('user_id', identity.user.id)
-        .maybeSingle();
-
-    if (membershipError) {
-      return respond('Unable to verify administrator access.', 500);
+    if (!EMAIL_PATTERN.test(email) || email.length > 254) {
+      return respondError('Valid employee email required.', 400);
     }
 
-    // Only company owners and administrators can invite.
-    // Other delegated invitation roles can be added after
-    // their database permissions are verified.
-    if (!['owner', 'admin'].includes(membership?.role)) {
-      return respond('Administrator permission required.', 403);
-    }
-
-    const { data: existingMember, error: existingError } =
-      await adminClient
-        .from('enterprise_members')
-        .select('user_id')
-        .eq('organization_id', organizationId)
-        .eq('user_id', identity.user.id)
-        .maybeSingle();
-
-    if (existingError) {
-      return respond('Unable to validate membership.', 500);
-    }
-
-    // Never allow the browser to choose an administrative
-    // role or create company membership directly.
-    // This endpoint only issues the Auth invitation.
-    // Company membership is provisioned separately after
-    // verified invitation acceptance.
-
-    const origin = new URL(request.url).origin;
-
-    const { error: inviteError } =
-      await adminClient.auth.admin.inviteUserByEmail(email, {
-        redirectTo: `${origin}/auth/activate?flow=invite`
-      });
-
-    if (inviteError) {
-      return respond(
-        'Unable to issue invitation. The address may already have an account, or email delivery may be unavailable.',
+    if (!displayName || displayName.length > 150) {
+      return respondError(
+        'Employee name is required (maximum 150 characters).',
         400
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Invitation email requested.'
-    });
-  } catch {
-    return respond('Unable to process invitation.', 500);
+    if (jobTitle.length > 150) {
+      return respondError(
+        'Job title must be 150 characters or fewer.',
+        400
+      );
+    }
+
+    if (!ALLOWED_ROLES.has(proposedRole)) {
+      return respondError(
+        'The selected employee role is not available for invitation.',
+        400
+      );
+    }
+
+    // 3. Confirm the inviter administers this company.
+    const permission = await verifyCompanyAdmin(
+      adminClient,
+      organizationId,
+      auth.user.id
+    );
+
+    if (permission.error) {
+      return respondError(
+        permission.error,
+        permission.status
+      );
+    }
+
+    // 4. Prevent duplicate pending invitations.
+    const { data: existingInvitation, error: lookupError } =
+      await adminClient
+        .from('enterprise_invitations')
+        .select('id, status, expires_at')
+        .eq('organization_id', organizationId)
+        .ilike('email', email)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+    if (lookupError) {
+      return respondError(
+        'Unable to check existing invitations.',
+        500
+      );
+    }
+
+    if (existingInvitation) {
+      return respondError(
+        'A pending invitation already exists for this employee. Revoke it before issuing another.',
+        409
+      );
+    }
+
+    // 5. Generate a cryptographically random secret.
+    const { token, tokenHash } =
+      generateInvitationToken();
+
+    const expiresAt = new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    // 6. Save invitation before sending email.
+    const { data: invitation, error: insertError } =
+      await adminClient
+        .from('enterprise_invitations')
+        .insert({
+          organization_id: organizationId,
+          email,
+          display_name: displayName,
+          job_title: jobTitle || null,
+          proposed_role: proposedRole,
+          invited_by: auth.user.id,
+          status: 'pending',
+          expires_at: expiresAt,
+          token_hash: tokenHash
+        })
+        .select('id')
+        .single();
+
+    if (insertError) {
+      console.error(
+        '[Enterprise Invitations] Insert error:',
+        insertError.code
+      );
+
+      return respondError(
+        'Unable to create the employee invitation.',
+        500
+      );
+    }
+
+    // 7. Construct the verified application redirect.
+    let origin;
+
+    try {
+      origin = new URL(appUrl).origin;
+
+      if (
+        process.env.NODE_ENV === 'production' &&
+        !origin.startsWith('https://')
+      ) {
+        throw new Error('HTTPS is required.');
+      }
+    } catch {
+      await adminClient
+        .from('enterprise_invitations')
+        .update({ status: 'revoked' })
+        .eq('id', invitation.id);
+
+      return respondError(
+        'The application URL is not configured correctly.',
+        503
+      );
+    }
+
+    const redirectUrl = new URL(
+      '/auth/activate',
+      origin
+    );
+
+    redirectUrl.searchParams.set('flow', 'invite');
+    redirectUrl.searchParams.set(
+      'invitation_token',
+      token
+    );
+
+    // 8. Send the Supabase invitation email.
+    //
+    // Important: inviteUserByEmail supports new Auth users.
+    // Existing Auth users need a separate verified
+    // invitation-delivery flow.
+    const { error: inviteError } =
+      await adminClient.auth.admin.inviteUserByEmail(
+        email,
+        {
+          redirectTo: redirectUrl.toString(),
+          data: {
+            display_name: displayName
+          }
+        }
+      );
+
+    if (inviteError) {
+      console.error(
+        '[Enterprise Invitations] Email error:',
+        inviteError.message
+      );
+
+      // Do not leave a usable invitation after failed delivery.
+      await adminClient
+        .from('enterprise_invitations')
+        .update({ status: 'revoked' })
+        .eq('id', invitation.id);
+
+      return respondError(
+        'Invitation delivery failed. The employee may already have an account, or the email service may be unavailable.',
+        400
+      );
+    }
+
+    // 9. Return success without exposing the secret.
+    return NextResponse.json(
+      {
+        success: true,
+        invitation_id: invitation.id,
+        status: 'pending',
+        expires_at: expiresAt,
+        message: 'Employee invitation sent successfully.'
+      },
+      {
+        status: 201,
+        headers: { 'Cache-Control': 'no-store' }
+      }
+    );
+
+  } catch (error) {
+    console.error(
+      '[Enterprise Invitations] Unexpected error:',
+      error
+    );
+
+    return respondError(
+      'Unable to process the employee invitation.',
+      500
+    );
   }
 }
