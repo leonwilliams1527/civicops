@@ -167,6 +167,13 @@ export default function EmployeeDirectory() {
   }, []);
 
   async function loadDirectory(organizationId, currentUser) {
+    const permission = await db.from('enterprise_members')
+      .select('role').eq('organization_id', organizationId).eq('user_id', currentUser).maybeSingle();
+    if (permission.error) throw permission.error;
+    if (!['owner', 'admin'].includes(permission.data?.role)) {
+      return { members: [{ user_id: currentUser, role: permission.data?.role || 'viewer' }],
+        departments: [], assignments: [], profiles: [], mine: null };
+    }
     const [m, d, a] = await Promise.all([
       db.from('enterprise_members')
         .select('user_id,role')
