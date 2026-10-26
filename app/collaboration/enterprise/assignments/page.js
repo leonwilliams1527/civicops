@@ -1,21 +1,21 @@
 
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import '../enterprise.css';
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 async function proxyFetch(input, init) {
   const raw = typeof input === 'string' ? input : input.url;
   const parsed = new URL(raw);
 
   if (
-    url &&
-    parsed.hostname === new URL(url).hostname &&
+    SUPABASE_URL &&
+    parsed.hostname === new URL(SUPABASE_URL).hostname &&
     /^\/(auth|rest|storage)\/v1\//.test(parsed.pathname)
   ) {
     return fetch(
@@ -29,51 +29,109 @@ async function proxyFetch(input, init) {
   return fetch(input, init);
 }
 
-const db = url && key
-  ? createClient(url, key, {
+const db = SUPABASE_URL && SUPABASE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_KEY, {
       global: { fetch: proxyFetch },
     })
   : null;
 
-const field = {
-  width: '100%',
-  padding: '10px 12px',
-  border: '1px solid #cbd5e1',
-  borderRadius: 9,
-  background: '#fff',
-  color: '#17324d',
-  boxSizing: 'border-box',
+const styles = {
+  panel: {
+    padding: 20,
+    borderRadius: 12,
+    border: '1px solid #dbe4ee',
+    background: '#fff',
+  },
+  input: {
+    width: '100%',
+    minHeight: 42,
+    padding: '10px 12px',
+    borderRadius: 9,
+    border: '1px solid #cbd5e1',
+    background: '#fff',
+    color: '#17324d',
+    boxSizing: 'border-box',
+  },
+  primary: {
+    padding: '11px 15px',
+    border: 0,
+    borderRadius: 8,
+    background: '#174b70',
+    color: '#fff',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  secondary: {
+    padding: '11px 15px',
+    border: 0,
+    borderRadius: 8,
+    background: '#e7eef5',
+    color: '#17324d',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  muted: {
+    color: '#60748b',
+    fontSize: 13,
+  },
+  field: {
+    display: 'grid',
+    gap: 7,
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: 14,
+  },
+  actions: {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginTop: 15,
+  },
 };
 
-const button = {
-  padding: '10px 14px',
-  border: 0,
-  borderRadius: 8,
-  background: '#174b70',
-  color: '#fff',
-  cursor: 'pointer',
-  fontWeight: 700,
-};
+function formatDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleString();
+}
 
-const secondary = {
-  ...button,
-  background: '#e8eff5',
-  color: '#17324d',
-};
+function displayRole(role) {
+  const labels = {
+    owner: 'Company Super Admin',
+    admin: 'Company Administrator',
+    board_director: 'Board Director',
+    executive: 'Executive Leadership',
+    location_manager: 'Location Manager',
+    department_manager: 'Department Manager',
+    manager: 'Manager (Legacy)',
+    operator: 'Employee / Operator',
+    viewer: 'Employee / Viewer',
+    staff: 'Staff',
+  };
+  return labels[role] || role || 'Employee';
+}
 
-const panel = {
-  background: '#fff',
-  border: '1px solid #dbe4ee',
-  borderRadius: 12,
-  padding: 18,
-};
+function eventLabel(row) {
+  const type = {
+    location: 'Location assignment',
+    department_staff: 'Department assignment',
+    location_department: 'Location department',
+  }[row.assignment_type] || 'Assignment';
 
-const note = {
-  color: '#64748b',
-  fontSize: 13,
-};
+  const action = {
+    assigned: 'added',
+    updated: 'updated',
+    removed: 'removed',
+  }[row.action] || row.action;
 
-export default function EnterpriseAssignments() {
+  return `${type} ${action}`;
+}
+
+export default function EnterpriseAssignmentsPage() {
   const [userId, setUserId] = useState('');
   const [organizations, setOrganizations] = useState([]);
   const [orgId, setOrgId] = useState('');
@@ -84,6 +142,7 @@ export default function EnterpriseAssignments() {
   const [locations, setLocations] = useState([]);
   const [locationDepartments, setLocationDepartments] = useState([]);
   const [departmentStaff, setDepartmentStaff] = useState([]);
+  const [audit, setAudit] = useState([]);
 
   const [facilityId, setFacilityId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
@@ -91,110 +150,112 @@ export default function EnterpriseAssignments() {
   const [locationRole, setLocationRole] = useState('staff');
   const [departmentRole, setDepartmentRole] = useState('staff');
 
-  const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [showAudit, setShowAudit] = useState(true);
+
+  const read = useCallback(async (table, org, columns = '*') => {
+    const result = await db
+      .from(table)
+      .select(columns)
+      .eq('organization_id', org);
+
+    if (result.error) throw result.error;
+    return result.data || [];
+  }, []);
 
   useEffect(() => {
-    let active = true;
+    let alive = true;
 
     async function initialize() {
       try {
-        if (!db) throw new Error('Supabase is not configured.');
+        if (!db) {
+          throw new Error('Supabase configuration is missing.');
+        }
 
-        const result = await db.auth.getUser();
-        if (result.error) throw result.error;
+        const authResult = await db.auth.getUser();
+        if (authResult.error) throw authResult.error;
 
-        const uid = result.data?.user?.id;
+        const uid = authResult.data?.user?.id;
         if (!uid) throw new Error('Please sign in.');
 
         const memberships = await db
           .from('enterprise_members')
           .select('organization_id,role')
-          .eq('user_id', uid)
-          .eq('role', 'owner');
+          .eq('user_id', uid);
 
         if (memberships.error) throw memberships.error;
 
-        const ids = (memberships.data || [])
-          .map(m => m.organization_id);
+        const ids = [
+          ...new Set(
+            (memberships.data || []).map(m => m.organization_id)
+          ),
+        ];
 
         let orgs = [];
 
         if (ids.length) {
-          const organizationsResult = await db
+          const result = await db
             .from('enterprise_organizations')
             .select('id,name')
             .in('id', ids)
             .order('name');
 
-          if (organizationsResult.error) {
-            throw organizationsResult.error;
-          }
-
-          orgs = organizationsResult.data || [];
+          if (result.error) throw result.error;
+          orgs = result.data || [];
         }
 
-        if (!active) return;
+        if (!alive) return;
 
         setUserId(uid);
         setOrganizations(orgs);
         setOrgId(orgs[0]?.id || '');
       } catch (err) {
-        if (active) setError(err.message);
+        if (alive) setError(err.message);
       } finally {
-        if (active) setLoading(false);
+        if (alive) setLoading(false);
       }
     }
 
     initialize();
-    return () => { active = false; };
+    return () => { alive = false; };
   }, []);
 
-  async function fetchCompany(id) {
-    const queries = await Promise.all([
-      db.from('enterprise_members')
-        .select('organization_id,user_id,role')
-        .eq('organization_id', id),
-
-      db.from('enterprise_facilities')
-        .select('id,name,region')
-        .eq('organization_id', id)
-        .order('name'),
-
-      db.from('enterprise_departments')
-        .select('id,name')
-        .eq('organization_id', id)
-        .order('name'),
-
-      db.from('enterprise_location_assignments')
-        .select('*')
-        .eq('organization_id', id),
-
-      db.from('enterprise_location_departments')
-        .select('*')
-        .eq('organization_id', id),
-
-      db.from('enterprise_location_department_staff')
-        .select('*')
-        .eq('organization_id', id),
+  const loadCompany = useCallback(async (organizationId) => {
+    const [
+      memberRows,
+      facilityRows,
+      departmentRows,
+      locationRows,
+      locationDepartmentRows,
+      staffRows,
+      auditRows,
+    ] = await Promise.all([
+      read('enterprise_members', organizationId,
+        'organization_id,user_id,role'),
+      read('enterprise_facilities', organizationId,
+        'id,organization_id,name,region'),
+      read('enterprise_departments', organizationId,
+        'id,organization_id,name'),
+      read('enterprise_location_assignments', organizationId),
+      read('enterprise_location_departments', organizationId),
+      read('enterprise_location_department_staff', organizationId),
+      read('enterprise_assignment_audit', organizationId),
     ]);
 
-    for (const result of queries) {
-      if (result.error) throw result.error;
-    }
-
-    const memberRows = queries[0].data || [];
-    const ids = [...new Set(memberRows.map(m => m.user_id))];
+    const userIds = [
+      ...new Set(memberRows.map(m => m.user_id)),
+    ];
 
     let profileRows = [];
 
-    if (ids.length) {
+    if (userIds.length) {
       const result = await db
         .from('enterprise_employee_profiles')
         .select('user_id,display_name,job_title')
-        .in('user_id', ids);
+        .in('user_id', userIds);
 
       if (result.error) throw result.error;
       profileRows = result.data || [];
@@ -202,56 +263,155 @@ export default function EnterpriseAssignments() {
 
     return {
       members: memberRows,
-      facilities: queries[1].data || [],
-      departments: queries[2].data || [],
-      locations: queries[3].data || [],
-      locationDepartments: queries[4].data || [],
-      departmentStaff: queries[5].data || [],
+      facilities: facilityRows,
+      departments: departmentRows,
+      locations: locationRows,
+      locationDepartments: locationDepartmentRows,
+      departmentStaff: staffRows,
+      audit: auditRows,
       profiles: profileRows,
     };
-  }
+  }, [read]);
 
-  function applyData(data) {
+  const applyCompany = useCallback((data) => {
     setMembers(data.members);
-    setProfiles(data.profiles);
     setFacilities(data.facilities);
     setDepartments(data.departments);
     setLocations(data.locations);
     setLocationDepartments(data.locationDepartments);
     setDepartmentStaff(data.departmentStaff);
-  }
+    setAudit(data.audit);
+    setProfiles(data.profiles);
+  }, []);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || !userId) return;
 
-    let active = true;
+    let alive = true;
     setLoading(true);
     setError('');
+    setMessage('');
     setFacilityId('');
     setDepartmentId('');
     setEmployeeId('');
 
-    fetchCompany(orgId)
+    loadCompany(orgId)
       .then(data => {
-        if (!active) return;
-        applyData(data);
-        setFacilityId(data.facilities[0]?.id || '');
+        if (!alive) return;
+        applyCompany(data);
       })
       .catch(err => {
-        if (active) setError(err.message);
+        if (alive) setError(err.message);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (alive) setLoading(false);
       });
 
-    return () => { active = false; };
-  }, [orgId]);
+    return () => { alive = false; };
+  }, [orgId, userId, loadCompany, applyCompany]);
 
-  const isOwner = members.some(m =>
-    m.organization_id === orgId &&
-    m.user_id === userId &&
-    m.role === 'owner'
+  const myMembership = members.find(
+    m => m.organization_id === orgId && m.user_id === userId
   );
+
+  const isOwner = myMembership?.role === 'owner';
+
+  const managedLocationIds = useMemo(() => {
+    if (isOwner) {
+      return new Set(facilities.map(f => f.id));
+    }
+
+    return new Set(
+      locations
+        .filter(a =>
+          a.user_id === userId &&
+          a.assignment_role === 'location_manager'
+        )
+        .map(a => a.facility_id)
+    );
+  }, [isOwner, facilities, locations, userId]);
+
+  const managedDepartmentPairs = useMemo(() => {
+    return new Set(
+      departmentStaff
+        .filter(a =>
+          a.user_id === userId &&
+          a.assignment_role === 'department_manager'
+        )
+        .map(a => `${a.facility_id}:${a.department_id}`)
+    );
+  }, [departmentStaff, userId]);
+
+  const visibleFacilities = useMemo(() => {
+    return facilities.filter(f =>
+      isOwner ||
+      managedLocationIds.has(f.id) ||
+      [...managedDepartmentPairs].some(
+        pair => pair.startsWith(`${f.id}:`)
+      )
+    ).sort((a, b) => a.name.localeCompare(b.name));
+  }, [
+    facilities,
+    isOwner,
+    managedLocationIds,
+    managedDepartmentPairs,
+  ]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (
+      facilityId &&
+      visibleFacilities.some(f => f.id === facilityId)
+    ) return;
+
+    setFacilityId(visibleFacilities[0]?.id || '');
+  }, [visibleFacilities, facilityId, loading]);
+
+  const canManageLocation =
+    !!facilityId &&
+    (isOwner || managedLocationIds.has(facilityId));
+
+  const visibleLocationDepartments = useMemo(() => {
+    return locationDepartments.filter(row =>
+      row.facility_id === facilityId &&
+      (
+        canManageLocation ||
+        managedDepartmentPairs.has(
+          `${row.facility_id}:${row.department_id}`
+        )
+      )
+    );
+  }, [
+    locationDepartments,
+    facilityId,
+    canManageLocation,
+    managedDepartmentPairs,
+  ]);
+
+  const visibleDepartmentIds = new Set(
+    visibleLocationDepartments.map(d => d.department_id)
+  );
+
+  const canManageDepartment =
+    !!departmentId &&
+    (
+      canManageLocation ||
+      managedDepartmentPairs.has(
+        `${facilityId}:${departmentId}`
+      )
+    );
+
+  useEffect(() => {
+    if (
+      departmentId &&
+      visibleDepartmentIds.has(departmentId)
+    ) return;
+
+    setDepartmentId(
+      visibleLocationDepartments[0]?.department_id || ''
+    );
+  }, [facilityId, visibleLocationDepartments, departmentId]);
 
   const employees = useMemo(() => {
     return members.map(member => {
@@ -261,44 +421,63 @@ export default function EnterpriseAssignments() {
 
       return {
         ...member,
-        name: profile?.display_name ||
+        name:
+          profile?.display_name ||
           `Employee ${member.user_id.slice(0, 8)}`,
         title: profile?.job_title || '',
       };
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [members, profiles]);
 
-  const currentLocation = facilities.find(
-    f => f.id === facilityId
-  );
-
-  const currentLocationAssignments = locations.filter(
+  const locationAssignments = locations.filter(
     a => a.facility_id === facilityId
   );
 
-  const activeDepartments = locationDepartments.filter(
-    a => a.facility_id === facilityId
-  );
-
-  const currentDepartmentStaff = departmentStaff.filter(
-    a => a.facility_id === facilityId &&
+  const departmentAssignments = departmentStaff.filter(
+    a =>
+      a.facility_id === facilityId &&
       a.department_id === departmentId
   );
 
   const selectedLocationAssignment = locations.find(
-    a => a.facility_id === facilityId &&
+    a =>
+      a.facility_id === facilityId &&
       a.user_id === employeeId
   );
 
   const selectedDepartmentAssignment = departmentStaff.find(
-    a => a.facility_id === facilityId &&
+    a =>
+      a.facility_id === facilityId &&
       a.department_id === departmentId &&
       a.user_id === employeeId
   );
 
-  function employeeName(uid) {
-    return employees.find(e => e.user_id === uid)?.name ||
-      `Employee ${uid.slice(0, 8)}`;
+  const currentFacility = facilities.find(
+    f => f.id === facilityId
+  );
+
+  const canManageSelectedLocationRole =
+    isOwner ||
+    (
+      canManageLocation &&
+      locationRole === 'staff' &&
+      selectedLocationAssignment?.assignment_role !==
+        'location_manager'
+    );
+
+  const canManageSelectedDepartmentRole =
+    canManageLocation ||
+    (
+      canManageDepartment &&
+      departmentRole === 'staff' &&
+      selectedDepartmentAssignment?.assignment_role !==
+        'department_manager'
+    );
+
+  function employeeName(id) {
+    if (!id) return '—';
+    return employees.find(e => e.user_id === id)?.name ||
+      `Employee ${id.slice(0, 8)}`;
   }
 
   function departmentName(id) {
@@ -306,40 +485,48 @@ export default function EnterpriseAssignments() {
       'Unknown department';
   }
 
-  async function perform(fn, successMessage) {
-    if (!isOwner || busy) return;
+  async function refresh() {
+    const data = await loadCompany(orgId);
+    applyCompany(data);
+  }
+
+  async function runAction(operation, success) {
+    if (busy) return;
 
     setBusy(true);
     setError('');
     setMessage('');
 
     try {
-      await fn();
-      const data = await fetchCompany(orgId);
-      applyData(data);
-      setMessage(successMessage);
+      await operation();
+      await refresh();
+      setMessage(success);
     } catch (err) {
       setError(err.message || 'Unable to save changes.');
-
       try {
-        const data = await fetchCompany(orgId);
-        applyData(data);
-      } catch (_) {}
+        await refresh();
+      } catch (_) {
+        // Keep the original error visible.
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function callRpc(name, params) {
+  async function rpc(name, params) {
     const result = await db.rpc(name, params);
     if (result.error) throw result.error;
   }
 
   function saveLocation() {
-    if (!facilityId || !employeeId) return;
+    if (
+      !employeeId ||
+      !facilityId ||
+      !canManageSelectedLocationRole
+    ) return;
 
-    perform(
-      () => callRpc('enterprise_set_location_assignment', {
+    runAction(
+      () => rpc('enterprise_set_location_assignment', {
         p_organization_id: orgId,
         p_facility_id: facilityId,
         p_user_id: employeeId,
@@ -351,49 +538,62 @@ export default function EnterpriseAssignments() {
   }
 
   function removeLocation() {
-    if (!selectedLocationAssignment) return;
+    if (
+      !selectedLocationAssignment ||
+      !canManageLocation ||
+      (
+        !isOwner &&
+        selectedLocationAssignment.assignment_role ===
+          'location_manager'
+      )
+    ) return;
 
     if (!window.confirm(
-      'Remove this employee from the location and its departments?'
+      'Remove this employee from this location and its departments?'
     )) return;
 
-    perform(
-      () => callRpc('enterprise_set_location_assignment', {
+    runAction(
+      () => rpc('enterprise_set_location_assignment', {
         p_organization_id: orgId,
         p_facility_id: facilityId,
         p_user_id: employeeId,
         p_role: selectedLocationAssignment.assignment_role,
         p_enabled: false,
       }),
-      'Location assignment removed.'
+      'Location access removed.'
     );
   }
 
   function toggleDepartment(id, enabled) {
-    if (!facilityId) return;
+    if (!canManageLocation || busy) return;
 
     if (!enabled && !window.confirm(
-      'Remove this department from this location? Its local staff assignments will also be removed.'
+      'Remove this department from the location? Its local staff assignments will also be removed.'
     )) return;
 
-    perform(
-      () => callRpc('enterprise_set_location_department', {
+    runAction(
+      () => rpc('enterprise_set_location_department', {
         p_organization_id: orgId,
         p_facility_id: facilityId,
         p_department_id: id,
         p_enabled: enabled,
       }),
       enabled
-        ? 'Department added to location.'
+        ? 'Department activated at location.'
         : 'Department removed from location.'
     );
   }
 
   function saveDepartmentStaff() {
-    if (!facilityId || !departmentId || !employeeId) return;
+    if (
+      !employeeId ||
+      !departmentId ||
+      !selectedLocationAssignment ||
+      !canManageSelectedDepartmentRole
+    ) return;
 
-    perform(
-      () => callRpc('enterprise_set_department_staff', {
+    runAction(
+      () => rpc('enterprise_set_department_staff', {
         p_organization_id: orgId,
         p_facility_id: facilityId,
         p_department_id: departmentId,
@@ -406,10 +606,18 @@ export default function EnterpriseAssignments() {
   }
 
   function removeDepartmentStaff() {
-    if (!selectedDepartmentAssignment) return;
+    if (
+      !selectedDepartmentAssignment ||
+      !canManageDepartment ||
+      (
+        !canManageLocation &&
+        selectedDepartmentAssignment.assignment_role ===
+          'department_manager'
+      )
+    ) return;
 
-    perform(
-      () => callRpc('enterprise_set_department_staff', {
+    runAction(
+      () => rpc('enterprise_set_department_staff', {
         p_organization_id: orgId,
         p_facility_id: facilityId,
         p_department_id: departmentId,
@@ -421,9 +629,71 @@ export default function EnterpriseAssignments() {
     );
   }
 
-  const hasActiveDepartment = activeDepartments.some(
-    d => d.department_id === departmentId
-  );
+  const visibleAudit = useMemo(() => {
+    return audit
+      .filter(row => {
+        if (isOwner) return true;
+
+        if (managedLocationIds.has(row.facility_id)) {
+          return true;
+        }
+
+        return row.department_id &&
+          managedDepartmentPairs.has(
+            `${row.facility_id}:${row.department_id}`
+          );
+      })
+      .filter(row =>
+        !facilityId || row.facility_id === facilityId
+      )
+      .sort((a, b) =>
+        new Date(b.created_at) - new Date(a.created_at)
+      )
+      .slice(0, 100);
+  }, [
+    audit,
+    isOwner,
+    facilityId,
+    managedLocationIds,
+    managedDepartmentPairs,
+  ]);
+
+  function chooseEmployee(id) {
+    setEmployeeId(id);
+
+    const location = locations.find(
+      a => a.facility_id === facilityId && a.user_id === id
+    );
+
+    const department = departmentStaff.find(
+      a =>
+        a.facility_id === facilityId &&
+        a.department_id === departmentId &&
+        a.user_id === id
+    );
+
+    setLocationRole(location?.assignment_role || 'staff');
+    setDepartmentRole(department?.assignment_role || 'staff');
+  }
+
+  function chooseDepartment(id) {
+    setDepartmentId(id);
+
+    const existing = departmentStaff.find(
+      a =>
+        a.facility_id === facilityId &&
+        a.department_id === id &&
+        a.user_id === employeeId
+    );
+
+    setDepartmentRole(existing?.assignment_role || 'staff');
+  }
+
+  const accessTitle = isOwner
+    ? 'Company Super Admin'
+    : canManageLocation
+      ? 'Location Manager'
+      : 'Department Manager';
 
   return (
     <main className="ent-page">
@@ -434,14 +704,15 @@ export default function EnterpriseAssignments() {
           </div>
           <h1>Location & Department Assignments</h1>
           <p>
-            Assign managers and employees across company locations.
+            Manage location responsibilities, departmental teams,
+            and delegated access.
           </p>
         </div>
 
-        <div style={{
+        <nav style={{
           display: 'flex',
-          gap: 14,
           flexWrap: 'wrap',
+          gap: 14,
         }}>
           <Link href="/collaboration/enterprise/access">
             Access Management
@@ -452,7 +723,7 @@ export default function EnterpriseAssignments() {
           <Link href="/collaboration/enterprise/workspace">
             My Workspace
           </Link>
-        </div>
+        </nav>
       </header>
 
       {error && (
@@ -468,24 +739,26 @@ export default function EnterpriseAssignments() {
       )}
 
       {loading ? (
-        <section className="ent-panel">Loading assignments…</section>
-      ) : !orgId || !isOwner ? (
         <section className="ent-panel">
-          This page requires Company Super Admin access.
+          Loading company assignments…
+        </section>
+      ) : !orgId ? (
+        <section className="ent-panel">
+          No enterprise company membership was found.
+        </section>
+      ) : !visibleFacilities.length ? (
+        <section className="ent-panel">
+          You do not currently manage any company locations or
+          departments. Contact your Company Super Admin for access.
         </section>
       ) : (
-        <>
-          <section style={{ ...panel, marginBottom: 16 }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns:
-                'repeat(auto-fit, minmax(230px, 1fr))',
-              gap: 16,
-            }}>
-              <label style={{ display: 'grid', gap: 7 }}>
+        <div style={{ display: 'grid', gap: 16 }}>
+          <section style={styles.panel}>
+            <div style={styles.grid}>
+              <label style={styles.field}>
                 <strong>Company</strong>
                 <select
-                  style={field}
+                  style={styles.input}
                   value={orgId}
                   disabled={busy}
                   onChange={e => setOrgId(e.target.value)}
@@ -498,19 +771,21 @@ export default function EnterpriseAssignments() {
                 </select>
               </label>
 
-              <label style={{ display: 'grid', gap: 7 }}>
+              <label style={styles.field}>
                 <strong>Location / Facility</strong>
                 <select
-                  style={field}
+                  style={styles.input}
                   value={facilityId}
                   disabled={busy}
                   onChange={e => {
                     setFacilityId(e.target.value);
                     setDepartmentId('');
+                    setEmployeeId('');
+                    setLocationRole('staff');
+                    setDepartmentRole('staff');
                   }}
                 >
-                  <option value="">Select a location</option>
-                  {facilities.map(f => (
+                  {visibleFacilities.map(f => (
                     <option key={f.id} value={f.id}>
                       {f.name}
                     </option>
@@ -519,330 +794,484 @@ export default function EnterpriseAssignments() {
               </label>
             </div>
 
-            {currentLocation && (
-              <p style={{ ...note, marginBottom: 0 }}>
-                {currentLocation.name}
-                {currentLocation.region
-                  ? ` — ${currentLocation.region}`
-                  : ''}
-              </p>
-            )}
+            <p style={{
+              ...styles.muted,
+              marginTop: 13,
+              marginBottom: 0,
+            }}>
+              {currentFacility?.name || 'Select location'}
+              {currentFacility?.region
+                ? ` — ${currentFacility.region}`
+                : ''}
+              {' • '}
+              Your access: {accessTitle}
+            </p>
           </section>
 
-          {!facilityId ? (
-            <section className="ent-panel">
-              Create or select a company facility to manage assignments.
-            </section>
-          ) : (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <section style={panel}>
-                <h2>Employee & Location Access</h2>
-                <p style={note}>
-                  Assign an employee to this location before adding
-                  them to a department.
-                </p>
+          <section style={styles.panel}>
+            <h2>Employee & Location Access</h2>
 
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns:
-                    'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: 12,
-                  marginBottom: 14,
-                }}>
-                  <label style={{ display: 'grid', gap: 7 }}>
+            <p style={styles.muted}>
+              {canManageLocation
+                ? 'Assign employees to this location. Only Company Super Admins can appoint Location Managers.'
+                : 'Location assignment is managed by your Location Manager or Company Super Admin.'}
+            </p>
+
+            {canManageLocation && (
+              <>
+                <div style={styles.grid}>
+                  <label style={styles.field}>
                     <strong>Employee</strong>
                     <select
-                      style={field}
+                      style={styles.input}
                       value={employeeId}
                       disabled={busy}
-                      onChange={e => {
-                        const id = e.target.value;
-                        setEmployeeId(id);
-
-                        const existing = locations.find(a =>
-                          a.facility_id === facilityId &&
-                          a.user_id === id
-                        );
-
-                        setLocationRole(
-                          existing?.assignment_role || 'staff'
-                        );
-
-                        const departmentExisting =
-                          departmentStaff.find(a =>
-                            a.facility_id === facilityId &&
-                            a.department_id === departmentId &&
-                            a.user_id === id
-                          );
-
-                        setDepartmentRole(
-                          departmentExisting?.assignment_role || 'staff'
-                        );
-                      }}
+                      onChange={e =>
+                        chooseEmployee(e.target.value)
+                      }
                     >
                       <option value="">Select employee</option>
                       {employees.map(e => (
-                        <option key={e.user_id} value={e.user_id}>
+                        <option
+                          key={e.user_id}
+                          value={e.user_id}
+                        >
                           {e.name}
                         </option>
                       ))}
                     </select>
                   </label>
 
-                  <label style={{ display: 'grid', gap: 7 }}>
+                  <label style={styles.field}>
                     <strong>Location responsibility</strong>
                     <select
-                      style={field}
+                      style={styles.input}
                       value={locationRole}
                       disabled={busy}
-                      onChange={e => setLocationRole(e.target.value)}
+                      onChange={e =>
+                        setLocationRole(e.target.value)
+                      }
                     >
-                      <option value="staff">Location Staff</option>
-                      <option value="location_manager">
-                        Location Manager
+                      <option value="staff">
+                        Location Staff
                       </option>
+                      {isOwner && (
+                        <option value="location_manager">
+                          Location Manager
+                        </option>
+                      )}
                     </select>
                   </label>
                 </div>
 
-                <div style={{
-                  display: 'flex',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                }}>
+                <div style={styles.actions}>
                   <button
-                    style={button}
-                    disabled={!employeeId || busy}
+                    type="button"
+                    style={styles.primary}
+                    disabled={
+                      busy ||
+                      !employeeId ||
+                      !canManageSelectedLocationRole
+                    }
                     onClick={saveLocation}
                   >
-                    {busy ? 'Saving…' : 'Save location assignment'}
+                    {busy
+                      ? 'Saving…'
+                      : 'Save location assignment'}
                   </button>
 
-                  {selectedLocationAssignment && (
-                    <button
-                      style={secondary}
+                  {selectedLocationAssignment &&
+                    (
+                      isOwner ||
+                      selectedLocationAssignment.assignment_role
+                        !== 'location_manager'
+                    ) && (
+                      <button
+                        type="button"
+                        style={styles.secondary}
+                        disabled={busy}
+                        onClick={removeLocation}
+                      >
+                        Remove location access
+                      </button>
+                    )}
+                </div>
+              </>
+            )}
+
+            <h3 style={{ marginTop: 24 }}>
+              Assigned employees
+            </h3>
+
+            {locationAssignments.length ? (
+              <div style={{ display: 'grid', gap: 9 }}>
+                {locationAssignments.map(a => (
+                  <div key={a.id} style={{
+                    padding: 13,
+                    border: '1px solid #dbe4ee',
+                    borderRadius: 9,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                  }}>
+                    <strong>{employeeName(a.user_id)}</strong>
+                    <span style={styles.muted}>
+                      {displayRole(a.assignment_role)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={styles.muted}>
+                No visible location assignments.
+              </p>
+            )}
+          </section>
+
+          <section style={styles.panel}>
+            <h2>Departments at This Location</h2>
+
+            <p style={styles.muted}>
+              {canManageLocation
+                ? 'Activate or deactivate departments at this facility.'
+                : 'You can view departments assigned to you.'}
+            </p>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              {(canManageLocation
+                ? departments
+                : departments.filter(d =>
+                    visibleDepartmentIds.has(d.id)
+                  )
+              ).map(d => {
+                const enabled =
+                  visibleDepartmentIds.has(d.id);
+
+                return (
+                  <label key={d.id} style={{
+                    display: 'flex',
+                    gap: 12,
+                    alignItems: 'center',
+                    padding: 13,
+                    border: '1px solid #dbe4ee',
+                    borderRadius: 9,
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      disabled={!canManageLocation || busy}
+                      onChange={e =>
+                        toggleDepartment(
+                          d.id,
+                          e.target.checked
+                        )
+                      }
+                    />
+                    <strong>{d.name}</strong>
+                  </label>
+                );
+              })}
+            </div>
+          </section>
+
+          <section style={styles.panel}>
+            <h2>Department Managers & Staff</h2>
+
+            <p style={styles.muted}>
+              Department Managers can allocate staff within
+              their assigned department. Location Managers can
+              also appoint Department Managers.
+            </p>
+
+            <label style={styles.field}>
+              <strong>Active department</strong>
+              <select
+                style={styles.input}
+                value={departmentId}
+                disabled={busy}
+                onChange={e =>
+                  chooseDepartment(e.target.value)
+                }
+              >
+                <option value="">Select department</option>
+                {visibleLocationDepartments.map(d => (
+                  <option
+                    key={d.department_id}
+                    value={d.department_id}
+                  >
+                    {departmentName(d.department_id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {departmentId && canManageDepartment && (
+              <>
+                {!canManageLocation && (
+                  <label style={{
+                    ...styles.field,
+                    marginTop: 14,
+                  }}>
+                    <strong>Employee</strong>
+                    <select
+                      style={styles.input}
+                      value={employeeId}
                       disabled={busy}
-                      onClick={removeLocation}
+                      onChange={e =>
+                        chooseEmployee(e.target.value)
+                      }
                     >
-                      Remove location access
-                    </button>
-                  )}
+                      <option value="">Select employee</option>
+                      {employees.map(e => (
+                        <option
+                          key={e.user_id}
+                          value={e.user_id}
+                        >
+                          {e.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                <label style={{
+                  ...styles.field,
+                  marginTop: 14,
+                }}>
+                  <strong>Employee responsibility</strong>
+                  <select
+                    style={styles.input}
+                    value={departmentRole}
+                    disabled={busy}
+                    onChange={e =>
+                      setDepartmentRole(e.target.value)
+                    }
+                  >
+                    <option value="staff">
+                      Department Staff
+                    </option>
+                    {canManageLocation && (
+                      <option value="department_manager">
+                        Department Manager
+                      </option>
+                    )}
+                  </select>
+                </label>
+
+                <div style={styles.actions}>
+                  <button
+                    type="button"
+                    style={styles.primary}
+                    disabled={
+                      busy ||
+                      !employeeId ||
+                      !selectedLocationAssignment ||
+                      !canManageSelectedDepartmentRole
+                    }
+                    onClick={saveDepartmentStaff}
+                  >
+                    Save department assignment
+                  </button>
+
+                  {selectedDepartmentAssignment &&
+                    (
+                      canManageLocation ||
+                      selectedDepartmentAssignment.assignment_role
+                        !== 'department_manager'
+                    ) && (
+                      <button
+                        type="button"
+                        style={styles.secondary}
+                        disabled={busy}
+                        onClick={removeDepartmentStaff}
+                      >
+                        Remove department assignment
+                      </button>
+                    )}
                 </div>
 
+                {!selectedLocationAssignment && employeeId && (
+                  <p style={styles.muted}>
+                    This employee must first be assigned to
+                    the location by an authorized Location Manager.
+                  </p>
+                )}
+              </>
+            )}
+
+            {departmentId && (
+              <>
                 <h3 style={{ marginTop: 24 }}>
-                  Assigned employees
+                  Department team
                 </h3>
 
-                {!currentLocationAssignments.length ? (
-                  <p style={note}>No employees assigned yet.</p>
-                ) : (
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    {currentLocationAssignments.map(a => (
+                {departmentAssignments.length ? (
+                  <div style={{ display: 'grid', gap: 9 }}>
+                    {departmentAssignments.map(a => (
                       <div key={a.id} style={{
-                        padding: 12,
+                        padding: 13,
                         border: '1px solid #dbe4ee',
                         borderRadius: 9,
                         display: 'flex',
                         justifyContent: 'space-between',
-                        gap: 12,
+                        gap: 10,
                         flexWrap: 'wrap',
                       }}>
-                        <strong>{employeeName(a.user_id)}</strong>
-                        <span style={note}>
-                          {a.assignment_role === 'location_manager'
-                            ? 'Location Manager'
-                            : 'Staff'}
+                        <strong>
+                          {employeeName(a.user_id)}
+                        </strong>
+                        <span style={styles.muted}>
+                          {displayRole(a.assignment_role)}
                         </span>
                       </div>
                     ))}
                   </div>
-                )}
-              </section>
-
-              <section style={panel}>
-                <h2>Departments at This Location</h2>
-                <p style={note}>
-                  Activate the departments operating at this facility.
-                  The same department can be active at multiple locations.
-                </p>
-
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {departments.map(department => {
-                    const enabled = activeDepartments.some(
-                      d => d.department_id === department.id
-                    );
-
-                    return (
-                      <label key={department.id} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: 12,
-                        border: '1px solid #dbe4ee',
-                        borderRadius: 9,
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          disabled={busy}
-                          onChange={e =>
-                            toggleDepartment(
-                              department.id,
-                              e.target.checked
-                            )
-                          }
-                        />
-                        <strong>{department.name}</strong>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                {!departments.length && (
-                  <p style={note}>
-                    No company departments have been created yet.
+                ) : (
+                  <p style={styles.muted}>
+                    No department employees assigned.
                   </p>
                 )}
-              </section>
+              </>
+            )}
+          </section>
 
-              <section style={panel}>
-                <h2>Department Managers & Staff</h2>
-                <p style={note}>
-                  Assign department responsibility within this
-                  location only.
+          <section style={styles.panel}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}>
+              <div>
+                <h2 style={{ marginBottom: 6 }}>
+                  Assignment Audit History
+                </h2>
+                <p style={styles.muted}>
+                  Changes recorded for locations and departments
+                  within your management scope.
                 </p>
+              </div>
 
-                <label style={{ display: 'grid', gap: 7 }}>
-                  <strong>Active department</strong>
-                  <select
-                    style={field}
-                    value={departmentId}
-                    disabled={busy}
-                    onChange={e => {
-                      const id = e.target.value;
-                      setDepartmentId(id);
+              <div style={{
+                display: 'flex',
+                gap: 10,
+              }}>
+                <button
+                  type="button"
+                  style={styles.secondary}
+                  disabled={busy}
+                  onClick={() =>
+                    runAction(
+                      async () => {},
+                      'Assignments refreshed.'
+                    )
+                  }
+                >
+                  Refresh
+                </button>
 
-                      const existing = departmentStaff.find(a =>
-                        a.facility_id === facilityId &&
-                        a.department_id === id &&
-                        a.user_id === employeeId
-                      );
-
-                      setDepartmentRole(
-                        existing?.assignment_role || 'staff'
-                      );
-                    }}
-                  >
-                    <option value="">Select department</option>
-                    {activeDepartments.map(d => (
-                      <option
-                        key={d.department_id}
-                        value={d.department_id}
-                      >
-                        {departmentName(d.department_id)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {departmentId && hasActiveDepartment && (
-                  <>
-                    <label style={{
-                      display: 'grid',
-                      gap: 7,
-                      marginTop: 14,
-                    }}>
-                      <strong>Employee responsibility</strong>
-                      <select
-                        style={field}
-                        value={departmentRole}
-                        disabled={busy}
-                        onChange={e =>
-                          setDepartmentRole(e.target.value)
-                        }
-                      >
-                        <option value="staff">
-                          Department Staff
-                        </option>
-                        <option value="department_manager">
-                          Department Manager
-                        </option>
-                      </select>
-                    </label>
-
-                    <div style={{
-                      display: 'flex',
-                      gap: 10,
-                      flexWrap: 'wrap',
-                      marginTop: 14,
-                    }}>
-                      <button
-                        style={button}
-                        disabled={
-                          busy ||
-                          !employeeId ||
-                          !selectedLocationAssignment
-                        }
-                        onClick={saveDepartmentStaff}
-                      >
-                        Save department assignment
-                      </button>
-
-                      {selectedDepartmentAssignment && (
-                        <button
-                          style={secondary}
-                          disabled={busy}
-                          onClick={removeDepartmentStaff}
-                        >
-                          Remove department assignment
-                        </button>
-                      )}
-                    </div>
-
-                    {!selectedLocationAssignment && (
-                      <p style={note}>
-                        Select an employee who has already been
-                        assigned to this location.
-                      </p>
-                    )}
-
-                    <h3 style={{ marginTop: 24 }}>
-                      Department team
-                    </h3>
-
-                    {!currentDepartmentStaff.length ? (
-                      <p style={note}>
-                        No employees assigned to this department yet.
-                      </p>
-                    ) : (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        {currentDepartmentStaff.map(a => (
-                          <div key={a.id} style={{
-                            padding: 12,
-                            border: '1px solid #dbe4ee',
-                            borderRadius: 9,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                            flexWrap: 'wrap',
-                          }}>
-                            <strong>{employeeName(a.user_id)}</strong>
-                            <span style={note}>
-                              {a.assignment_role ===
-                                'department_manager'
-                                ? 'Department Manager'
-                                : 'Staff'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </section>
+                <button
+                  type="button"
+                  style={styles.secondary}
+                  onClick={() => setShowAudit(v => !v)}
+                >
+                  {showAudit ? 'Hide history' : 'Show history'}
+                </button>
+              </div>
             </div>
-          )}
-        </>
+
+            {showAudit && (
+              !visibleAudit.length ? (
+                <p style={styles.muted}>
+                  No visible assignment activity yet.
+                </p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{
+                    width: '100%',
+                    borderCollapse: 'collapse',
+                    fontSize: 14,
+                  }}>
+                    <thead>
+                      <tr>
+                        {[
+                          'Date',
+                          'Action',
+                          'Employee',
+                          'Performed by',
+                          'Department',
+                          'Role change',
+                        ].map(label => (
+                          <th key={label} style={{
+                            textAlign: 'left',
+                            padding: 12,
+                            borderBottom: '1px solid #dbe4ee',
+                          }}>
+                            {label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {visibleAudit.map(row => (
+                        <tr key={row.id}>
+                          <td style={{
+                            padding: 12,
+                            borderBottom: '1px solid #eef2f7',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {formatDate(row.created_at)}
+                          </td>
+                          <td style={{
+                            padding: 12,
+                            borderBottom: '1px solid #eef2f7',
+                          }}>
+                            {eventLabel(row)}
+                          </td>
+                          <td style={{
+                            padding: 12,
+                            borderBottom: '1px solid #eef2f7',
+                          }}>
+                            {employeeName(row.subject_user_id)}
+                          </td>
+                          <td style={{
+                            padding: 12,
+                            borderBottom: '1px solid #eef2f7',
+                          }}>
+                            {employeeName(row.actor_id)}
+                          </td>
+                          <td style={{
+                            padding: 12,
+                            borderBottom: '1px solid #eef2f7',
+                          }}>
+                            {row.department_id
+                              ? departmentName(row.department_id)
+                              : '—'}
+                          </td>
+                          <td style={{
+                            padding: 12,
+                            borderBottom: '1px solid #eef2f7',
+                          }}>
+                            {row.old_role
+                              ? displayRole(row.old_role)
+                              : '—'}
+                            {' → '}
+                            {row.new_role
+                              ? displayRole(row.new_role)
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+          </section>
+        </div>
       )}
     </main>
   );
