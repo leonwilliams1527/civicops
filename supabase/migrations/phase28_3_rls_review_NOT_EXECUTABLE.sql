@@ -1,0 +1,14 @@
+-- Phase 28.3a: restrict enterprise facilities and facility actions.
+-- Enterprise Supabase only. Review existing policies before applying:
+-- PostgreSQL combines permissive policies with OR, so old broad policies
+-- must be removed or replaced for these tables.
+-- This file is a SECURITY REVIEW TEMPLATE, not an auto-applied migration.
+-- Existing policy names and column definitions must be verified first.
+--
+-- Intended rules:
+-- enterprise_facilities SELECT: enterprise_can_view_facility(organization_id,id)
+-- enterprise_facilities INSERT/UPDATE/DELETE: enterprise_is_org_admin(organization_id)
+-- enterprise_actions SELECT: enterprise_can_view_facility(organization_id,facility_id)
+-- enterprise_actions write: authorized facility operator/manager or org admin
+--
+-- Do not run until policies and role schema have been audited.
