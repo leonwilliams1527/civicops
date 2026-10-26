@@ -490,14 +490,27 @@ export async function POST(request) {
       );
     }
 
-    // 12. Deliver branded invitation through Resend.
+    // 12. Send the recipient directly to our activation page with
+    // Supabase's one-time token hash. Avoid Supabase's /verify redirect
+    // chain, which can lose the Enterprise invitation query parameters.
+    // Supabase verifyOtp validates the hash and establishes the session.
+    const otpHash = authLink.properties?.hashed_token;
+    if (!otpHash) {
+      await revokeInvitation(adminClient, invitationId);
+      return respondError('Unable to generate secure activation token.', 502);
+    }
+    const activationUrl = new URL(redirectUrl.toString());
+    activationUrl.searchParams.set('token_hash', otpHash);
+    activationUrl.searchParams.set('type', 'invite');
+
+    // 13. Deliver branded invitation through Resend.
     let delivery;
 
     try {
       delivery = await sendResendInvitation({
         email,
         displayName,
-        actionUrl: authLink.properties.action_link
+        actionUrl: activationUrl.toString()
       });
     } catch (error) {
       console.error(
