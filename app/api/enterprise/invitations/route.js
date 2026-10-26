@@ -456,38 +456,38 @@ export async function POST(request) {
 
     // 11. Generate a Supabase one-time authentication link.
     // This generates the link without sending Supabase email.
-    const {
-      data: authLink,
-      error: linkError
-    } = await adminClient.auth.admin.generateLink({
-      type: 'invite',
-      email,
-      options: {
-        redirectTo: redirectUrl.toString(),
-        data: {
-          display_name: displayName
+    // Existing confirmed Enterprise users cannot receive another Supabase
+    // invite-type link. Use a magic-link login for them; the separate
+    // organization invitation token still controls membership acceptance.
+    let authType = 'invite';
+    let { data: authLink, error: linkError } =
+      await adminClient.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: {
+          redirectTo: redirectUrl.toString(),
+          data: { display_name: displayName }
         }
-      }
-    });
+      });
 
-    if (
-      linkError ||
-      !authLink?.properties?.action_link
-    ) {
-      console.error(
-        '[Enterprise Invitations] Authentication link error:',
-        linkError?.message
-      );
+    const alreadyRegistered = linkError &&
+      /already (been )?registered|already exists|already registered|user already/i.test(linkError.message || '');
 
-      await revokeInvitation(
-        adminClient,
-        invitationId
-      );
+    if (alreadyRegistered) {
+      authType = 'magiclink';
+      ({ data: authLink, error: linkError } =
+        await adminClient.auth.admin.generateLink({
+          type: 'magiclink',
+          email,
+          options: { redirectTo: redirectUrl.toString() }
+        }));
+    }
 
-      return respondError(
-        'Unable to generate secure activation link.',
-        502
-      );
+    if (linkError || !authLink?.properties?.hashed_token) {
+      console.error('[Enterprise Invitations] Authentication link error:',
+        linkError?.code || linkError?.message);
+      await revokeInvitation(adminClient, invitationId);
+      return respondError('Unable to generate secure activation link.', 502);
     }
 
     // 12. Send the recipient directly to our activation page with
@@ -501,7 +501,7 @@ export async function POST(request) {
     }
     const activationUrl = new URL(redirectUrl.toString());
     activationUrl.searchParams.set('token_hash', otpHash);
-    activationUrl.searchParams.set('type', 'invite');
+    activationUrl.searchParams.set('type', authType);
 
     // 13. Deliver branded invitation through Resend.
     let delivery;
