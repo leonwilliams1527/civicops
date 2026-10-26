@@ -69,6 +69,10 @@ export default function EmployeeDirectory() {
   const [profiles, setProfiles] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [facilityAssignments, setFacilityAssignments] = useState([]);
+  const [facilities, setFacilities] = useState([]);
+  const [facilityMember, setFacilityMember] = useState('');
+  const [facilityChoice, setFacilityChoice] = useState('');
 
   const [name, setName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
@@ -174,6 +178,11 @@ export default function EmployeeDirectory() {
       return { members: [{ user_id: currentUser, role: permission.data?.role || 'viewer' }],
         departments: [], assignments: [], profiles: [], mine: null };
     }
+    const [facilityResult, facilityMemberResult] = await Promise.all([
+      db.from('enterprise_facilities').select('id,name').eq('organization_id', organizationId).order('name'),
+      db.from('enterprise_facility_members').select('facility_id,user_id').eq('organization_id', organizationId)
+    ]);
+    if (facilityResult.error || facilityMemberResult.error) throw facilityResult.error || facilityMemberResult.error;
     const [m, d, a] = await Promise.all([
       db.from('enterprise_members')
         .select('user_id,role')
@@ -218,6 +227,8 @@ export default function EmployeeDirectory() {
       members: m.data || [],
       departments: d.data || [],
       assignments: a.data || [],
+      facilities: facilityResult.data || [],
+      facilityAssignments: facilityMemberResult.data || [],
       profiles: people,
       mine: people.find(
         p => p.user_id === currentUser
@@ -229,6 +240,8 @@ export default function EmployeeDirectory() {
     setMembers(data.members);
     setDepartments(data.departments);
     setAssignments(data.assignments);
+    setFacilities(data.facilities || []);
+    setFacilityAssignments(data.facilityAssignments || []);
     setProfiles(data.profiles);
     setName(data.mine?.display_name || '');
     setJobTitle(data.mine?.job_title || '');
@@ -353,6 +366,21 @@ export default function EmployeeDirectory() {
         }),
       'Your profile was saved.'
     );
+  }
+
+  async function assignFacility(e) {
+    e.preventDefault();
+    if (!canInvite || !facilityMember || !facilityChoice) return;
+    await perform(() => db.from('enterprise_facility_members').insert({
+      organization_id: org, user_id: facilityMember, facility_id: facilityChoice, assigned_by: uid
+    }), 'Employee assigned to facility.');
+  }
+
+  async function removeFacilityAssignment(item) {
+    if (!canInvite || !window.confirm('Remove this employee from this facility?')) return;
+    await perform(() => db.from('enterprise_facility_members').delete()
+      .eq('organization_id', org).eq('user_id', item.user_id).eq('facility_id', item.facility_id),
+      'Facility access removed.');
   }
 
   async function createDepartment(e) {
@@ -911,6 +939,30 @@ export default function EmployeeDirectory() {
               </form>
             )}
           </section>
+
+          {canInvite && (
+            <section className="ent-panel" style={{ marginBottom: 16, padding: 20 }}>
+              <h2>Employee facility access</h2>
+              <p>Assign employees only to the facilities they are authorized to access.</p>
+              <form onSubmit={assignFacility} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <select required value={facilityMember} onChange={e => setFacilityMember(e.target.value)} style={field}>
+                  <option value="">Select employee</option>
+                  {members.map(m => <option key={m.user_id} value={m.user_id}>{personName(m.user_id)}</option>)}
+                </select>
+                <select required value={facilityChoice} onChange={e => setFacilityChoice(e.target.value)} style={field}>
+                  <option value="">Select facility</option>
+                  {facilities.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+                <button type="submit" disabled={busy} style={button}>Assign facility</button>
+              </form>
+              <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
+                {facilityAssignments.map(a => <div key={a.user_id + a.facility_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span>{personName(a.user_id)} — {facilities.find(f => f.id === a.facility_id)?.name || 'Facility'}</span>
+                  <button type="button" disabled={busy} onClick={() => removeFacilityAssignment(a)}>Remove</button>
+                </div>)}
+              </div>
+            </section>
+          )}
 
           <section className="ent-panel">
             <h2>
