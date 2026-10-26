@@ -44,12 +44,15 @@ const db =
     : null;
 
 function getFlow(params, hash) {
-  const type =
-    hash.get('type') ||
-    params.get('type') ||
-    params.get('flow');
-
-  return type === 'invite' ? 'invite' : 'recovery';
+  // Enterprise invitations for existing users authenticate with a
+  // Supabase magiclink, but still require the Enterprise invite flow.
+  // The explicit flow parameter must not be overridden by OTP type.
+  const explicitFlow = params.get('flow');
+  if (explicitFlow === 'invite' || explicitFlow === 'recovery') {
+    return explicitFlow;
+  }
+  const authType = hash.get('type') || params.get('type');
+  return authType === 'invite' ? 'invite' : 'recovery';
 }
 
 export default function Activate() {
