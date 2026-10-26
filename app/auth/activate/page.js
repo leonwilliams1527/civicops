@@ -113,8 +113,9 @@ export default function Activate() {
         // An invite link may be consumed while the browser has already
         // established a valid session. Prefer the verified session when
         // resuming a pending invitation; never bypass token validation.
-        const existing = await db.auth.getSession();
-        let sessionEstablished = Boolean(existing.data?.session);
+        const incomingCredential = Boolean(hash.get('access_token') || params.get('token_hash') || params.get('code'));
+        const existing = incomingCredential ? null : await db.auth.getSession();
+        let sessionEstablished = Boolean(existing?.data?.session);
 
         if (linkError && !sessionEstablished) {
           throw new Error(linkError.replace(/\+/g, ' '));
@@ -167,7 +168,7 @@ export default function Activate() {
           const { error: verifyError } =
             await db.auth.verifyOtp({
               token_hash: params.get('token_hash'),
-              type
+              type: type === 'magiclink' ? 'email' : type
             });
 
           if (verifyError) {
