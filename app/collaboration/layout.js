@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import './shell.css';
@@ -36,6 +36,8 @@ const enterpriseSections = [
 
 export default function CollaborationLayout({ children }) {
   const path = usePathname() || '/collaboration';
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
   const [open, setOpen] = useState(false);
   const [executiveAccess, setExecutiveAccess] = useState(false);
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function CollaborationLayout({ children }) {
     path.startsWith('/collaboration/enterprise/');
 
   const sections = isEnterprise
-    ? enterpriseSections.filter(item => !['Executive Dashboard', 'Administration'].includes(item[1]) || executiveAccess)
+    ? enterpriseSections.filter(item => ['My Workspace', 'Employee Directory'].includes(item[1]) || executiveAccess)
     : municipalSections;
 
   
@@ -132,6 +134,19 @@ const active = (href) => {
           ))}
         </nav>
 
+        <div style={{ padding: '12px 16px' }}>
+          <button type="button" disabled={signingOut} onClick={async () => {
+            setSigningOut(true);
+            try {
+              const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+              await db.auth.signOut();
+              router.replace('/login');
+              router.refresh();
+            } catch { setSigningOut(false); }
+          }} style={{ width: '100%', padding: 12, cursor: 'pointer', borderRadius: 8, border: '1px solid #7390ab', background: '#193f62', color: 'white', fontWeight: 700 }}>
+            {signingOut ? 'Signing out…' : 'Sign out'}
+          </button>
+        </div>
         <div className="civic-shell-footer">
           {isEnterprise
             ? 'CivicOps · Enterprise Operations'
