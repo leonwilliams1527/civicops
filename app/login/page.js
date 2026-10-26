@@ -60,10 +60,11 @@ export default function Login() {
       window.location.search
     );
 
-    const flow =
-      hash.get('type') ||
-      query.get('type') ||
-      'recovery';
+const flow =
+  hash.get('type') ||
+  query.get('type') ||
+  query.get('flow') ||
+  '';
 
     const isActivation =
       ['recovery', 'invite'].includes(flow) ||
