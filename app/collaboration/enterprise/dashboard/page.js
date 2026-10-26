@@ -137,6 +137,8 @@ const panelGrid = {
 
 export default function ExecutiveDashboard() {
   const [organizations, setOrganizations] = useState([]);
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [accessChecked, setAccessChecked] = useState(false);
   const [organizationId, setOrganizationId] = useState('');
   const [facilityFilter, setFacilityFilter] = useState('all');
 
@@ -170,9 +172,17 @@ export default function ExecutiveDashboard() {
           throw new Error('Please sign in to view the dashboard.');
         }
 
+        const memberships = await db.from('enterprise_members').select('organization_id,role').eq('user_id', auth.data.user.id);
+        if (memberships.error) throw memberships.error;
+        const ids = (memberships.data || []).filter(m => ['owner','admin'].includes(m.role)).map(m => m.organization_id);
+        if (!active) return;
+        setAccessChecked(true);
+        setAccessGranted(ids.length > 0);
+        if (!ids.length) { setLoading(false); return; }
         const result = await db
           .from('enterprise_organizations')
           .select('id,name')
+          .in('id', ids)
           .order('name');
 
         if (result.error) throw result.error;
@@ -199,7 +209,7 @@ export default function ExecutiveDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!organizationId || !db) return;
+    if (!organizationId || !db || !accessGranted) return;
 
     let active = true;
 
@@ -491,6 +501,8 @@ export default function ExecutiveDashboard() {
     f => f.contractorCount > 0
   ).length;
 
+  if (!accessChecked && loading) return <main className="ent-page"><p>Checking permissions…</p></main>;
+  if (!accessGranted) return <main className="ent-page"><h1>Access restricted</h1><p>Executive Dashboard requires organization owner or administrator access.</p><Link href="/collaboration/enterprise/workspace">My Workspace</Link></main>;
   return (
     <main className="ent-page">
       <header className="ent-header">
