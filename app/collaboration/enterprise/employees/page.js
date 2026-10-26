@@ -175,8 +175,16 @@ export default function EmployeeDirectory() {
       .select('role').eq('organization_id', organizationId).eq('user_id', currentUser).maybeSingle();
     if (permission.error) throw permission.error;
     if (!['owner', 'admin'].includes(permission.data?.role)) {
-      return { members: [{ user_id: currentUser, role: permission.data?.role || 'viewer' }],
-        departments: [], assignments: [], profiles: [], mine: null };
+      const visible = await db.rpc('enterprise_visible_colleagues', { p_organization_id: organizationId });
+      if (visible.error) throw visible.error;
+      const rows = visible.data || [];
+      return {
+        members: rows.map(row => ({ user_id: row.user_id, role: row.role })),
+        departments: [], assignments: [],
+        profiles: rows.map(row => ({ user_id: row.user_id, display_name: row.display_name, job_title: row.job_title })),
+        facilities: [], facilityAssignments: [],
+        mine: rows.find(row => row.user_id === currentUser) || null
+      };
     }
     const [facilityResult, facilityMemberResult] = await Promise.all([
       db.from('enterprise_facilities').select('id,name').eq('organization_id', organizationId).order('name'),
@@ -966,7 +974,7 @@ export default function EmployeeDirectory() {
 
           <section className="ent-panel">
             <h2>
-              Employees ({members.length})
+              {canInvite ? 'Employees' : 'Colleagues at your locations'} ({members.length})
             </h2>
 
             <div
