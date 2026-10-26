@@ -158,10 +158,10 @@ export default function Activate() {
               : 'recovery');
 
           if (
-            !['invite', 'recovery', 'magiclink'].includes(type)
+            !['invite', 'recovery', 'magiclink', 'email', 'signup'].includes(type)
           ) {
             throw new Error(
-              'Unsupported activation link.'
+              'Unsupported activation link type: ' + String(type).slice(0, 32)
             );
           }
 
