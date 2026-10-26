@@ -56,19 +56,27 @@ export default function Activate() {
   const [ready, setReady] = useState(false);
   const [authorized, setAuthorized] = useState(false);
   const [flow, setFlow] = useState('recovery');
+
+  const [invitationToken, setInvitationToken] =
+    useState('');
+
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [destination, setDestination] = useState('/login');
+
+  const [destination, setDestination] =
+    useState('/login');
 
   useEffect(() => {
     let mounted = true;
 
     async function initialize() {
       if (!db) {
-        setError('Supabase authentication is not configured.');
+        setError(
+          'Supabase authentication is not configured.'
+        );
         setReady(true);
         return;
       }
@@ -88,6 +96,13 @@ export default function Activate() {
           setFlow(currentFlow);
         }
 
+        const suppliedToken =
+          params.get('invitation_token') || '';
+
+        if (mounted && suppliedToken) {
+          setInvitationToken(suppliedToken);
+        }
+
         const linkError =
           params.get('error_description') ||
           hash.get('error_description');
@@ -100,7 +115,10 @@ export default function Activate() {
 
         let sessionEstablished = false;
 
-        // Supabase implicit invitation/recovery links.
+        // -----------------------------------------
+        // 1. Handle implicit Supabase auth links
+        // -----------------------------------------
+
         if (
           hash.get('access_token') &&
           hash.get('refresh_token')
@@ -111,21 +129,33 @@ export default function Activate() {
               refresh_token: hash.get('refresh_token')
             });
 
-          if (tokenError) throw tokenError;
+          if (tokenError) {
+            throw tokenError;
+          }
 
           sessionEstablished = true;
         }
 
-        // Token-hash invitation/recovery links.
-        if (!sessionEstablished && params.get('token_hash')) {
+        // -----------------------------------------
+        // 2. Handle token-hash links
+        // -----------------------------------------
+
+        if (
+          !sessionEstablished &&
+          params.get('token_hash')
+        ) {
           const type =
             params.get('type') ||
             (currentFlow === 'invite'
               ? 'invite'
               : 'recovery');
 
-          if (!['invite', 'recovery'].includes(type)) {
-            throw new Error('Unsupported activation link.');
+          if (
+            !['invite', 'recovery'].includes(type)
+          ) {
+            throw new Error(
+              'Unsupported activation link.'
+            );
           }
 
           const { error: verifyError } =
@@ -134,54 +164,113 @@ export default function Activate() {
               type
             });
 
-          if (verifyError) throw verifyError;
+          if (verifyError) {
+            throw verifyError;
+          }
 
           sessionEstablished = true;
         }
 
-        // Supabase PKCE links.
-        if (!sessionEstablished && params.get('code')) {
+        // -----------------------------------------
+        // 3. Handle Supabase PKCE links
+        // -----------------------------------------
+
+        if (
+          !sessionEstablished &&
+          params.get('code')
+        ) {
           const { error: codeError } =
             await db.auth.exchangeCodeForSession(
               params.get('code')
             );
 
-          if (codeError) throw codeError;
+          if (codeError) {
+            throw codeError;
+          }
 
           sessionEstablished = true;
         }
 
         if (!sessionEstablished) {
           throw new Error(
-            'Open the secure invitation or password-recovery ' +
-            'link sent to your email address.'
+            'Open the secure invitation or ' +
+            'password-recovery link sent to ' +
+            'your email address.'
           );
         }
 
-        const { data, error: sessionError } =
-          await db.auth.getUser();
+        // -----------------------------------------
+        // 4. Verify authenticated user
+        // -----------------------------------------
 
-        if (sessionError || !data.user) {
+        const {
+          data: userData,
+          error: userError
+        } = await db.auth.getUser();
+
+        if (
+          userError ||
+          !userData?.user
+        ) {
           throw new Error(
-            'This activation link is invalid or expired.'
+            'This activation link is invalid ' +
+            'or has expired.'
           );
         }
 
-        // Remove one-time credentials from the address bar.
+        // -----------------------------------------
+        // 5. Validate invitation token format
+        // -----------------------------------------
+
+        if (currentFlow === 'invite') {
+          if (
+            !/^[a-f0-9]{64}$/i.test(suppliedToken)
+          ) {
+            throw new Error(
+              'This invitation is missing its ' +
+              'secure activation token. ' +
+              'Contact your administrator ' +
+              'for a new invitation.'
+            );
+          }
+        }
+
+        // -----------------------------------------
+        // 6. Remove one-time auth credentials
+        // while preserving invitation secret
+        // -----------------------------------------
+
+        const safeParams =
+          new URLSearchParams({
+            flow: currentFlow
+          });
+
+        if (
+          currentFlow === 'invite' &&
+          suppliedToken
+        ) {
+          safeParams.set(
+            'invitation_token',
+            suppliedToken
+          );
+        }
+
         window.history.replaceState(
           null,
           '',
-          '/auth/activate?flow=' +
-            encodeURIComponent(currentFlow)
+          '/auth/activate?' +
+            safeParams.toString()
         );
 
         if (mounted) {
           setAuthorized(true);
         }
+
       } catch (err) {
         if (mounted) {
           setError(
-            err.message || 'Unable to verify activation link.'
+            err.message ||
+            'Unable to verify activation link.'
           );
         }
       } finally {
@@ -202,15 +291,22 @@ export default function Activate() {
     event.preventDefault();
     setError('');
 
+    // -------------------------------------------
+    // 1. Validate password
+    // -------------------------------------------
+
     if (password.length < 12) {
       setError(
-        'Your password must contain at least 12 characters.'
+        'Your password must contain ' +
+        'at least 12 characters.'
       );
       return;
     }
 
     if (password !== confirm) {
-      setError('The passwords do not match.');
+      setError(
+        'The passwords do not match.'
+      );
       return;
     }
 
@@ -218,90 +314,163 @@ export default function Activate() {
 
     try {
       if (!db) {
-        throw new Error('Authentication is unavailable.');
-      }
-
-      const { data: sessionData, error: sessionError } =
-        await db.auth.getSession();
-
-      if (sessionError || !sessionData.session) {
         throw new Error(
-          'Your session has expired. Request a new secure link.'
+          'Authentication is unavailable.'
         );
       }
 
-      const { error: passwordError } =
-        await db.auth.updateUser({ password });
+      // -----------------------------------------
+      // 2. Verify current session
+      // -----------------------------------------
 
-      if (passwordError) throw passwordError;
+      const {
+        data: sessionData,
+        error: sessionError
+      } = await db.auth.getSession();
 
-      const { data: updatedSession } =
-        await db.auth.getSession();
+      if (
+        sessionError ||
+        !sessionData?.session
+      ) {
+        throw new Error(
+          'Your session has expired. ' +
+          'Request a new secure link.'
+        );
+      }
 
-      const token = updatedSession.session?.access_token;
+      // -----------------------------------------
+      // 3. Update password
+      // -----------------------------------------
 
-      if (!token) {
+      const {
+        error: passwordError
+      } = await db.auth.updateUser({
+        password
+      });
+
+      if (passwordError) {
+        throw passwordError;
+      }
+
+      // -----------------------------------------
+      // 4. Get updated access token
+      // -----------------------------------------
+
+      const {
+        data: updatedSession,
+        error: updatedSessionError
+      } = await db.auth.getSession();
+
+      if (updatedSessionError) {
+        throw updatedSessionError;
+      }
+
+      const accessToken =
+        updatedSession?.session?.access_token;
+
+      if (!accessToken) {
         throw new Error(
           'Unable to verify your updated session.'
         );
       }
 
+      // -----------------------------------------
+      // 5. Enterprise invitation activation
+      // -----------------------------------------
+
       if (flow === 'invite') {
-        /*
-         * The server must:
-         * 1. Authenticate this bearer token.
-         * 2. Verify an outstanding invitation for this user.
-         * 3. Confirm the invitation's company and expiry.
-         * 4. Reject revoked or already-consumed invitations.
-         * 5. Create membership and employee profile atomically.
-         * 6. Mark the invitation accepted.
-         *
-         * Never trust a company ID supplied by the browser.
-         */
+        if (
+          !/^[a-f0-9]{64}$/i.test(invitationToken)
+        ) {
+          throw new Error(
+            'A valid invitation token is required.'
+          );
+        }
+
         const response = await fetch(
           '/api/enterprise/invitations/accept',
           {
             method: 'POST',
             headers: {
-              Authorization: `Bearer ${token}`
-            }
+              Authorization:
+                `Bearer ${accessToken}`,
+              'Content-Type':
+                'application/json'
+            },
+            body: JSON.stringify({
+              invitation_token:
+                invitationToken
+            })
           }
         );
 
-        const result = await response
-          .json()
-          .catch(() => ({}));
+        const result =
+          await response.json().catch(
+            () => ({})
+          );
 
         if (!response.ok) {
           throw new Error(
             result.error ||
-              'Your password was saved, but company access ' +
-              'could not be activated. Contact your administrator.'
+            'Your password was saved, but ' +
+            'company access could not be ' +
+            'activated. Contact your administrator.'
           );
         }
 
-        setDestination('/collaboration/enterprise');
+        if (!result.success) {
+          throw new Error(
+            'Company activation could not ' +
+            'be confirmed.'
+          );
+        }
+
+        setDestination(
+          '/collaboration/enterprise'
+        );
+
+        // Clear invitation secret from URL
+        window.history.replaceState(
+          null,
+          '',
+          '/auth/activate?flow=invite'
+        );
+
+        setInvitationToken('');
+
       } else {
-        /*
-         * Recovery must not create a new membership.
-         * The existing audit endpoint is best-effort only.
-         */
-        await fetch('/api/auth/activation-complete', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`
+        // ---------------------------------------
+        // 6. Password recovery
+        // ---------------------------------------
+        // Recovery never creates membership.
+        // ---------------------------------------
+
+        await fetch(
+          '/api/auth/activation-complete',
+          {
+            method: 'POST',
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`
+            }
           }
-        }).catch(() => {});
+        ).catch(() => {});
 
         setDestination('/login');
       }
 
+      // -----------------------------------------
+      // 7. Complete activation
+      // -----------------------------------------
+
       setPassword('');
       setConfirm('');
       setSuccess(true);
+
     } catch (err) {
       setError(
-        err.message || 'Unable to complete account activation.'
+        err.message ||
+        'Unable to complete account activation.'
       );
     } finally {
       setBusy(false);
@@ -311,6 +480,7 @@ export default function Activate() {
   return (
     <main className="activate-page">
       <section className="activate-card">
+
         <div className="activate-brand">
           CIVICOPS
         </div>
@@ -326,14 +496,20 @@ export default function Activate() {
         </h1>
 
         {!ready ? (
-          <p>Verifying your secure link…</p>
+          <p>
+            Verifying your secure link…
+          </p>
+
         ) : success ? (
           <>
             <p>
               {flow === 'invite'
-                ? 'Your account has been activated. ' +
-                  'Your company access is managed by your administrator.'
-                : 'Your password has been updated successfully.'}
+                ? 'Your Enterprise account has ' +
+                  'been activated successfully. ' +
+                  'Your company access and role ' +
+                  'are managed by your administrator.'
+                : 'Your password has been ' +
+                  'updated successfully.'}
             </p>
 
             <Link
@@ -345,18 +521,23 @@ export default function Activate() {
                 : 'Return to sign in →'}
             </Link>
           </>
+
         ) : authorized ? (
           <>
             <p>
               {flow === 'invite'
-                ? 'Create a secure password to finish ' +
-                  'setting up your invited employee account.'
-                : 'Create a new password to recover access.'}
+                ? 'Create a secure password to ' +
+                  'finish activating your invited ' +
+                  'employee account.'
+                : 'Create a new password to ' +
+                  'recover access to your account.'}
             </p>
 
             <form onSubmit={savePassword}>
+
               <label>
                 New password
+
                 <input
                   type="password"
                   autoComplete="new-password"
@@ -364,13 +545,16 @@ export default function Activate() {
                   required
                   value={password}
                   onChange={(event) =>
-                    setPassword(event.target.value)
+                    setPassword(
+                      event.target.value
+                    )
                   }
                 />
               </label>
 
               <label>
                 Confirm password
+
                 <input
                   type="password"
                   autoComplete="new-password"
@@ -378,29 +562,42 @@ export default function Activate() {
                   required
                   value={confirm}
                   onChange={(event) =>
-                    setConfirm(event.target.value)
+                    setConfirm(
+                      event.target.value
+                    )
                   }
                 />
               </label>
 
-              <button type="submit" disabled={busy}>
+              <button
+                type="submit"
+                disabled={busy}
+              >
                 {busy
                   ? 'Saving…'
                   : flow === 'invite'
                     ? 'Activate account'
                     : 'Save password'}
               </button>
+
             </form>
           </>
+
         ) : null}
 
         {error && (
-          <p className="activate-error" role="alert">
+          <p
+            className="activate-error"
+            role="alert"
+          >
             {error}
           </p>
         )}
 
-        <Link className="activate-back" href="/login">
+        <Link
+          className="activate-back"
+          href="/login"
+        >
           ← Back to sign in
         </Link>
 
@@ -409,6 +606,7 @@ export default function Activate() {
             Request a new password link
           </Link>
         </p>
+
       </section>
     </main>
   );
