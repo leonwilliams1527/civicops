@@ -30,6 +30,7 @@ const enterpriseSections = [
   ['/collaboration/enterprise/assets', 'Assets & Equipment', '◫'],
   ['/collaboration/enterprise/inspections', 'Inspections & Audits', '▤'],
   ['/collaboration/enterprise/contractors', 'Contractors & Vendors', '♧'],
+  ['/collaboration/enterprise/admin', 'Administration', '⚙'],
 ];
 
 
@@ -54,7 +55,7 @@ export default function CollaborationLayout({ children }) {
     path.startsWith('/collaboration/enterprise/');
 
   const sections = isEnterprise
-    ? enterpriseSections.filter(item => item[1] !== 'Executive Dashboard' || executiveAccess)
+    ? enterpriseSections.filter(item => !['Executive Dashboard', 'Administration'].includes(item[1]) || executiveAccess)
     : municipalSections;
 
   
