@@ -580,3 +580,47 @@ export async function POST(request) {
     );
   }
 }
+
+
+// Company-scoped invitation management. No authentication identities are deleted.
+export async function GET(request) {
+  try {
+    if (!url || !anonKey || !serviceKey) return respondError('Invitation service unavailable.', 503);
+    const auth = await getAuthenticatedAdmin(request);
+    if (auth.error) return respondError(auth.error, auth.status);
+    const organizationId = new URL(request.url).searchParams.get('organization_id') || '';
+    if (!UUID_PATTERN.test(organizationId)) return respondError('Valid company ID required.', 400);
+    const admin = createSupabaseClient(serviceKey);
+    const permission = await verifyCompanyAdmin(admin, organizationId, auth.user.id);
+    if (permission.error) return respondError(permission.error, permission.status);
+    const { data, error } = await admin.from('enterprise_invitations')
+      .select('id,email,display_name,proposed_role,status,created_at,expires_at')
+      .eq('organization_id', organizationId).eq('status', 'pending')
+      .order('created_at', { ascending: false }).limit(100);
+    if (error) return respondError('Unable to load pending invitations.', 500);
+    return NextResponse.json({ success: true, invitations: data || [] }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch { return respondError('Unable to load invitations.', 500); }
+}
+
+export async function PATCH(request) {
+  try {
+    if (!url || !anonKey || !serviceKey) return respondError('Invitation service unavailable.', 503);
+    const auth = await getAuthenticatedAdmin(request);
+    if (auth.error) return respondError(auth.error, auth.status);
+    const body = await request.json();
+    const organizationId = String(body.organization_id || '');
+    const invitationId = String(body.invitation_id || '');
+    if (!UUID_PATTERN.test(organizationId) || !UUID_PATTERN.test(invitationId) || body.action !== 'revoke')
+      return respondError('Valid invitation and revoke action required.', 400);
+    const admin = createSupabaseClient(serviceKey);
+    const permission = await verifyCompanyAdmin(admin, organizationId, auth.user.id);
+    if (permission.error) return respondError(permission.error, permission.status);
+    const { data, error } = await admin.from('enterprise_invitations')
+      .update({ status: 'revoked' }).eq('id', invitationId)
+      .eq('organization_id', organizationId).eq('status', 'pending')
+      .select('id').maybeSingle();
+    if (error) return respondError('Unable to revoke invitation.', 500);
+    if (!data) return respondError('Pending invitation not found or already processed.', 409);
+    return NextResponse.json({ success: true, status: 'revoked' }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch { return respondError('Unable to revoke invitation.', 500); }
+}
