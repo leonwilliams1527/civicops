@@ -57,7 +57,7 @@ export default function CollaborationLayout({ children }) {
     path.startsWith('/collaboration/enterprise/');
 
   const sections = isEnterprise
-    ? enterpriseSections.filter(item => ['My Workspace', 'Employee Directory'].includes(item[1]) || executiveAccess)
+    ? enterpriseSections.filter(item => ['My Workspace', 'Employee Directory', 'Locations & Facilities', 'Assets & Equipment', 'Inspections & Audits'].includes(item[1]) || executiveAccess)
     : municipalSections;
 
   
