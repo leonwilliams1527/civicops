@@ -1,0 +1,32 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {createClient} from '@supabase/supabase-js';
+import Link from 'next/link';
+import '../enterprise.css';
+const db=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const TYPES=[['asset_register','Register asset'],['asset_update','Update asset'],['inspection_conduct','Conduct inspection'],['contractor_compliance','Verify contractor compliance'],['facility_status','Update facility status'],['corrective_action','Corrective action']];
+export default function DelegatedTasks(){
+ const [uid,setUid]=useState(''),[orgs,setOrgs]=useState([]),[org,setOrg]=useState(''),[facilities,setFacilities]=useState([]),[members,setMembers]=useState([]),[tasks,setTasks]=useState([]),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[role,setRole]=useState('viewer');
+ useEffect(()=>{(async()=>{const {data:{user}}=await db.auth.getUser();if(!user){setError('Sign in required');return;}setUid(user.id);const m=await db.from('enterprise_members').select('organization_id,role').eq('user_id',user.id);if(m.error){setError(m.error.message);return;}const ids=(m.data||[]).map(x=>x.organization_id);if(!ids.length)return;const o=await db.from('enterprise_organizations').select('id,name').in('id',ids);if(o.error)setError(o.error.message);else{setOrgs(o.data||[]);setOrg(o.data?.[0]?.id||'');}})()},[]);
+ async function load(){if(!org||!uid)return;const [f,m,t,r]=await Promise.all([db.from('enterprise_facilities').select('id,name').eq('organization_id',org),db.from('enterprise_facility_members').select('facility_id,user_id').eq('organization_id',org),db.from('enterprise_delegated_tasks').select('*').eq('organization_id',org).order('created_at',{ascending:false}),db.from('enterprise_members').select('role').eq('organization_id',org).eq('user_id',uid).maybeSingle()]);const err=[f,m,t,r].find(x=>x.error);if(err){setError(err.error.message);return;}setFacilities(f.data||[]);setMembers(m.data||[]);setTasks(t.data||[]);setRole(r.data?.role||'viewer');}
+ useEffect(()=>{load()},[org,uid]);
+ const manager=['owner','admin','manager'].includes(role);
+ async function create(e){e.preventDefault();const fd=new FormData(e.currentTarget);const facility_id=String(fd.get('facility_id'));const assigned_to=String(fd.get('assigned_to'));if(!members.some(x=>x.facility_id===facility_id&&x.user_id===assigned_to)){setError('Employee must be assigned to the selected facility.');return;}setBusy(true);setError('');const res=await db.from('enterprise_delegated_tasks').insert({organization_id:org,facility_id,assigned_to,assigned_by:uid,task_type:String(fd.get('task_type')),title:String(fd.get('title')).trim(),instructions:String(fd.get('instructions')).trim(),due_at:fd.get('due_at')||null,expires_at:fd.get('expires_at')||null});if(res.error)setError(res.error.message);else{setNotice('Task assigned');e.currentTarget.reset();await load()}setBusy(false)}
+ async function transition(id,status){setBusy(true);setError('');const r=await db.rpc('enterprise_transition_delegated_task',{p_task:id,p_status:status,p_note:null});if(r.error)setError(r.error.message);else{setNotice('Task updated');await load()}setBusy(false)}
+ return <main className="ent-page"><header className="ent-header"><div><div className="ent-eyebrow">CIVICOPS / ENTERPRISE</div><h1>Task Management</h1><p>Delegate limited, location-specific operational work and review submissions.</p></div><Link href="/collaboration/enterprise/workspace">My Workspace</Link></header>
+ {error&&<div role="alert" className="ent-error">{error}</div>}{notice&&<p role="status">{notice}</p>}
+ <label>Organization <select value={org} onChange={e=>setOrg(e.target.value)}>{orgs.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
+ {manager&&<section className="ent-panel" style={{padding:20,marginTop:18}}><h2>Assign task</h2><form onSubmit={create} style={{display:'grid',gap:12,maxWidth:600}}>
+ <label>Facility <select name="facility_id" required>{facilities.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+ <label>Employee <select name="assigned_to" required><option value="">Choose employee</option>{[...new Set(members.map(m=>m.user_id))].map(id=><option key={id} value={id}>{id}</option>)}</select></label>
+ <label>Task type <select name="task_type">{TYPES.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
+ <label>Title <input name="title" minLength={3} maxLength={180} required/></label>
+ <label>Instructions <textarea name="instructions" rows={3}/></label>
+ <label>Due date <input type="datetime-local" name="due_at"/></label>
+ <label>Access expiration <input type="datetime-local" name="expires_at"/></label>
+ <button disabled={busy||!facilities.length} type="submit">Assign task</button></form></section>}
+ <section className="ent-panel" style={{padding:20,marginTop:18}}><h2>{manager?'Assigned and received tasks':'My assigned tasks'}</h2>
+ {!tasks.length&&<p>No tasks available.</p>}
+ {tasks.map(t=><article key={t.id} style={{padding:14,borderBottom:'1px solid #ddd'}}><strong>{t.title}</strong><p>{TYPES.find(x=>x[0]===t.task_type)?.[1]} · {facilities.find(f=>f.id===t.facility_id)?.name||'Facility'} · {t.status}</p><p>{t.instructions}</p>{t.due_at&&<small>Due: {new Date(t.due_at).toLocaleString()}</small>}
+ <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>{t.assigned_to===uid&&['assigned','rejected'].includes(t.status)&&<button disabled={busy} onClick={()=>transition(t.id,'in_progress')}>Start work</button>}{t.assigned_to===uid&&t.status==='in_progress'&&<button disabled={busy} onClick={()=>transition(t.id,'submitted')}>Submit for review</button>}{manager&&t.assigned_to!==uid&&t.status==='submitted'&&<><button disabled={busy} onClick={()=>transition(t.id,'approved')}>Approve</button><button disabled={busy} onClick={()=>transition(t.id,'rejected')}>Request changes</button></>}{manager&&!['approved','cancelled'].includes(t.status)&&<button disabled={busy} onClick={()=>transition(t.id,'cancelled')}>Cancel</button>}</div></article>)}</section></main>
+}
