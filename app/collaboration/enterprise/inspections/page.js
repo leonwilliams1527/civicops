@@ -23,7 +23,7 @@ const proxy=async(input,init)=>{
 const db=url&&key?createClient(url,key,{global:{fetch:proxy}}):null;
 
 export default function Inspections(){
- const [orgs,setOrgs]=useState([]);
+ const [uid,setUid]=useState(''),[orgs,setOrgs]=useState([]);
  const [org,setOrg]=useState('');
  const [facilities,setFacilities]=useState([]);
  const [assets,setAssets]=useState([]);
@@ -42,6 +42,7 @@ export default function Inspections(){
     if(!db)throw Error('Supabase not configured');
     const {data:{user},error:e}=await db.auth.getUser();
     if(e||!user)throw Error('Sign in to access enterprise inspections');
+    if(live)setUid(user.id);
     const r=await db.from('enterprise_organizations')
      .select('id,name').order('name');
     if(r.error)throw r.error;
@@ -59,7 +60,7 @@ export default function Inspections(){
  },[]);
 
  useEffect(()=>{
-  if(!org)return;
+  if(!org||!uid)return;
   let live=true;
   setBusy(true);
   setSelected('');
@@ -80,7 +81,7 @@ export default function Inspections(){
      db.from('enterprise_findings')
       .select('*').eq('organization_id',org),
      db.from('enterprise_members')
-      .select('role').eq('organization_id',org).limit(1)
+      .select('role').eq('organization_id',org).eq('user_id',uid).maybeSingle()
     ]);
 
     if(f.error||a.error||i.error||n.error||m.error){
@@ -92,7 +93,7 @@ export default function Inspections(){
      setAssets(a.data||[]);
      setInspections(i.data||[]);
      setFindings(n.data||[]);
-     setRole(m.data?.[0]?.role||'viewer');
+     setRole(m.data?.role||'viewer');
     }
    }catch(e){
     if(live)setError(e.message);
@@ -102,9 +103,9 @@ export default function Inspections(){
   })();
 
   return()=>{live=false};
- },[org]);
+ },[org,uid]);
 
- const writable=['operator','manager'].includes(role);
+ const writable=['owner','admin','operator','manager'].includes(role);
 
  async function addInspection(e){
   e.preventDefault();
