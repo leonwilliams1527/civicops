@@ -9,7 +9,7 @@ as $$
  and t.assigned_to=(select auth.uid()) and t.task_type=p_type
  and t.status in ('assigned','in_progress','rejected')
  and (t.expires_at is null or t.expires_at>now())
- and (t.target_id is null or t.target_id=p_target)
+ and ((p_target is null and t.target_id is null) or (p_target is not null and t.target_id=p_target))
  and public.enterprise_can_view_facility(p_org,p_facility));
 $$;
 -- Grant is operation-specific. INSERT grants are limited to new records;
