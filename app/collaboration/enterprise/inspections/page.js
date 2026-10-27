@@ -23,7 +23,7 @@ const proxy=async(input,init)=>{
 const db=url&&key?createClient(url,key,{global:{fetch:proxy}}):null;
 
 export default function Inspections(){
- const [uid,setUid]=useState(''),[orgs,setOrgs]=useState([]);
+ const [grants,setGrants]=useState([]),[uid,setUid]=useState(''),[orgs,setOrgs]=useState([]);
  const [org,setOrg]=useState('');
  const [facilities,setFacilities]=useState([]);
  const [assets,setAssets]=useState([]);
@@ -70,7 +70,7 @@ export default function Inspections(){
 
   (async()=>{
    try{
-    const [f,a,i,n,m]=await Promise.all([
+    const [f,a,i,n,m,g]=await Promise.all([
      db.from('enterprise_facilities')
       .select('id,name').eq('organization_id',org),
      db.from('enterprise_assets')
@@ -81,11 +81,12 @@ export default function Inspections(){
      db.from('enterprise_findings')
       .select('*').eq('organization_id',org),
      db.from('enterprise_members')
-      .select('role').eq('organization_id',org).eq('user_id',uid).maybeSingle()
+      .select('role').eq('organization_id',org).eq('user_id',uid).maybeSingle(),
+     db.from('enterprise_delegated_tasks').select('facility_id,task_type,target_id,status,expires_at').eq('organization_id',org).eq('assigned_to',uid).in('status',['assigned','in_progress','rejected'])
     ]);
 
-    if(f.error||a.error||i.error||n.error||m.error){
-     throw f.error||a.error||i.error||n.error||m.error;
+    if(f.error||a.error||i.error||n.error||m.error||g.error){
+     throw f.error||a.error||i.error||n.error||m.error||g.error;
     }
 
     if(live){
@@ -93,7 +94,7 @@ export default function Inspections(){
      setAssets(a.data||[]);
      setInspections(i.data||[]);
      setFindings(n.data||[]);
-     setRole(m.data?.role||'viewer');
+     setRole(m.data?.role||'viewer');setGrants((g.data||[]).filter(x=>!x.expires_at||new Date(x.expires_at)>new Date()));setGrants((g.data||[]).filter(x=>!x.expires_at||new Date(x.expires_at)>new Date()));
     }
    }catch(e){
     if(live)setError(e.message);
@@ -106,10 +107,12 @@ export default function Inspections(){
  },[org,uid]);
 
  const writable=['owner','admin','operator','manager'].includes(role);
+ const inspectionGrant=grants.some(g=>g.task_type==='inspection_conduct'&&!g.target_id);
+ const findingGrant=grants.some(g=>g.task_type==='inspection_conduct'&&g.target_id===selected);
 
  async function addInspection(e){
   e.preventDefault();
-  if(!writable)return;
+  if(!writable&&!grants.some(g=>g.task_type==='inspection_conduct'&&!g.target_id&&g.facility_id===String(new FormData(e.currentTarget).get('facility_id'))))return;
   setSaving(true);
   setError('');
 
@@ -140,7 +143,7 @@ export default function Inspections(){
 
  async function addFinding(e){
   e.preventDefault();
-  if(!writable||!selected)return;
+  if((!writable&&!findingGrant)||!selected)return;
   setSaving(true);
   setError('');
 
@@ -209,7 +212,7 @@ export default function Inspections(){
      </div>
     </div>
 
-    {writable&&
+    {(writable||inspectionGrant)&&
      <form className="ent-panel ent-form" onSubmit={addInspection}>
       <h2>Schedule inspection</h2>
 
@@ -289,7 +292,7 @@ export default function Inspections(){
          </div>
         )}
 
-        {writable&&
+        {(writable||inspectionGrant)&&
          <form className="ent-form" onSubmit={addFinding}>
           <h3>Add finding</h3>
 
