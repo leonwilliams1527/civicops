@@ -10,7 +10,7 @@ const proxy=async(input,init)=>{const raw=typeof input==='string'?input:input.ur
 const db=url&&key?createClient(url,key,{global:{fetch:proxy}}):null;
 
 export default function Assets(){
- const [uid,setUid]=useState(''),[orgs,setOrgs]=useState([]),[org,setOrg]=useState(''),[facilities,setFacilities]=useState([]),[assets,setAssets]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(true),[saving,setSaving]=useState(false),[role,setRole]=useState('viewer');
+ const [grants,setGrants]=useState([]),[uid,setUid]=useState(''),[orgs,setOrgs]=useState([]),[org,setOrg]=useState(''),[facilities,setFacilities]=useState([]),[assets,setAssets]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(true),[saving,setSaving]=useState(false),[role,setRole]=useState('viewer');
 
  useEffect(()=>{
   let live=true;
@@ -35,16 +35,17 @@ export default function Assets(){
   setBusy(true);setAssets([]);setFacilities([]);setError('');
   (async()=>{
    try{
-    const [f,a,m]=await Promise.all([
+    const [f,a,m,g]=await Promise.all([
      db.from('enterprise_facilities').select('id,name').eq('organization_id',org).order('name'),
      db.from('enterprise_assets').select('*').eq('organization_id',org).order('name'),
-     db.from('enterprise_members').select('role').eq('organization_id',org).eq('user_id',uid).maybeSingle()
+     db.from('enterprise_members').select('role').eq('organization_id',org).eq('user_id',uid).maybeSingle(),
+     db.from('enterprise_delegated_tasks').select('facility_id,task_type,target_id,status,expires_at').eq('organization_id',org).eq('assigned_to',uid).in('status',['assigned','in_progress','rejected'])
     ]);
-    if(f.error||a.error||m.error)throw f.error||a.error||m.error;
+    if(f.error||a.error||m.error||g.error)throw f.error||a.error||m.error||g.error;
     if(live){
      setFacilities(f.data||[]);
      setAssets(a.data||[]);
-     setRole(m.data?.role||'viewer')
+     setRole(m.data?.role||'viewer');setGrants((g.data||[]).filter(x=>!x.expires_at||new Date(x.expires_at)>new Date()));setGrants((g.data||[]).filter(x=>!x.expires_at||new Date(x.expires_at)>new Date()))
     }
    }catch(e){if(live)setError(e.message)}
    finally{if(live)setBusy(false)}
@@ -54,7 +55,7 @@ export default function Assets(){
 
  async function add(e){
   e.preventDefault();
-  if(!['owner','admin','operator','manager'].includes(role))return;
+  if(!['owner','admin','operator','manager'].includes(role)&&!grants.some(g=>g.task_type==='asset_register'&&g.facility_id===String(new FormData(e.currentTarget).get('facility_id'))&&!g.target_id))return;
   setSaving(true);setError('');
   const form=e.currentTarget,fd=new FormData(form);
   const payload={
@@ -99,7 +100,7 @@ export default function Assets(){
     <div><strong>{facilities.length}</strong><span>Facilities</span></div>
    </div>
 
-   {['operator','manager'].includes(role)&&<form className="ent-panel ent-form" onSubmit={add}>
+   {(['owner','admin','operator','manager'].includes(role)||grants.some(g=>g.task_type==='asset_register'&&!g.target_id))&&<form className="ent-panel ent-form" onSubmit={add}>
     <h2>Register equipment</h2>
     <label>Facility<select name="facility_id" required>
      {facilities.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
