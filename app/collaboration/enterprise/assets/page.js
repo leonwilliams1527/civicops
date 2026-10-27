@@ -10,7 +10,7 @@ const proxy=async(input,init)=>{const raw=typeof input==='string'?input:input.ur
 const db=url&&key?createClient(url,key,{global:{fetch:proxy}}):null;
 
 export default function Assets(){
- const [orgs,setOrgs]=useState([]),[org,setOrg]=useState(''),[facilities,setFacilities]=useState([]),[assets,setAssets]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(true),[saving,setSaving]=useState(false),[role,setRole]=useState('viewer');
+ const [uid,setUid]=useState(''),[orgs,setOrgs]=useState([]),[org,setOrg]=useState(''),[facilities,setFacilities]=useState([]),[assets,setAssets]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(true),[saving,setSaving]=useState(false),[role,setRole]=useState('viewer');
 
  useEffect(()=>{
   let live=true;
@@ -19,6 +19,7 @@ export default function Assets(){
     if(!db)throw Error('Supabase not configured');
     const {data:{user},error:e}=await db.auth.getUser();
     if(e||!user)throw Error('Sign in to access enterprise assets');
+    if(live)setUid(user.id);
     const r=await db.from('enterprise_organizations').select('id,name').order('name');
     if(r.error)throw r.error;
     if(live){setOrgs(r.data||[]);setOrg(r.data?.[0]?.id||'')}
@@ -29,7 +30,7 @@ export default function Assets(){
  },[]);
 
  useEffect(()=>{
-  if(!org)return;
+  if(!org||!uid)return;
   let live=true;
   setBusy(true);setAssets([]);setFacilities([]);setError('');
   (async()=>{
@@ -37,23 +38,23 @@ export default function Assets(){
     const [f,a,m]=await Promise.all([
      db.from('enterprise_facilities').select('id,name').eq('organization_id',org).order('name'),
      db.from('enterprise_assets').select('*').eq('organization_id',org).order('name'),
-     db.from('enterprise_members').select('role').eq('organization_id',org).limit(1)
+     db.from('enterprise_members').select('role').eq('organization_id',org).eq('user_id',uid).maybeSingle()
     ]);
     if(f.error||a.error||m.error)throw f.error||a.error||m.error;
     if(live){
      setFacilities(f.data||[]);
      setAssets(a.data||[]);
-     setRole(m.data?.[0]?.role||'viewer')
+     setRole(m.data?.role||'viewer')
     }
    }catch(e){if(live)setError(e.message)}
    finally{if(live)setBusy(false)}
   })();
   return()=>{live=false}
- },[org]);
+ },[org,uid]);
 
  async function add(e){
   e.preventDefault();
-  if(!['operator','manager'].includes(role))return;
+  if(!['owner','admin','operator','manager'].includes(role))return;
   setSaving(true);setError('');
   const form=e.currentTarget,fd=new FormData(form);
   const payload={
