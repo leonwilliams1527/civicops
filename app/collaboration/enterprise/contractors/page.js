@@ -237,6 +237,16 @@ export default function ContractorsPage() {
       throw Error('Session expired. Please sign in again.');
     }
 
+    // Contractor data has organization-wide fields and requires its own scoped RLS.
+    // Fail closed for non-admins until contractor-specific policies are deployed.
+    const permission = await db.from('enterprise_members').select('role')
+      .eq('organization_id', organizationId)
+      .eq('user_id', auth.data.user.id).maybeSingle();
+    if (permission.error) throw permission.error;
+    if (!['owner', 'admin'].includes(permission.data?.role)) {
+      throw Error('Contractor records are restricted until location-based contractor access is enabled.');
+    }
+
     const [f, v, a, c, d, m, cl] = await Promise.all([
       db.from('enterprise_facilities')
         .select('id,name,region,status')
