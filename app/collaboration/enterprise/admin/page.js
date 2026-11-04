@@ -40,6 +40,7 @@ export default function EnterpriseAdmin() {
     <section className="ent-panel" style={{ padding: 24 }}>
       <h2>Administration tools</h2>
       <p><Link href="/collaboration/enterprise/employees">Employee Directory and Invitations</Link> — invite employees, revoke pending invitations, manage departments and employee assignments.</p>
+      <p><Link href="/collaboration/enterprise/access">Access Management</Link> — manage employee roles, location access and permissions.</p>
       <p><Link href="/collaboration/enterprise/dashboard">Executive Dashboard</Link> — organization-wide reporting for authorized leadership.</p>
       <p>Additional organization settings and granular role management are planned for the next administration phase.</p>
     </section>
