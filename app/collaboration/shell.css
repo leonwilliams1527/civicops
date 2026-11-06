@@ -19,3 +19,14 @@
 }
 .civic-shell-content .bm-page{max-width:none;margin:0;padding:28px clamp(18px,2.2vw,38px)}
 @media(max-width:850px){.civic-shell-content .bm-page{padding:18px 14px}}
+
+/* Enterprise Administration hover/focus submenu */
+.civic-shell-admin-group{position:relative}
+.civic-shell-admin-chevron{margin-left:auto!important;width:auto!important;font-size:12px!important}
+.civic-shell-admin-subnav{display:none;margin:3px 0 7px 19px;padding:4px 0 4px 12px;border-left:1px solid #54718d}
+.civic-shell-admin-group:hover .civic-shell-admin-subnav,
+.civic-shell-admin-group:focus-within .civic-shell-admin-subnav{display:grid;gap:3px}
+.civic-shell-admin-sublink{display:block;padding:10px 9px;border-radius:7px;color:#d1e0ef;text-decoration:none;font-size:12px;font-weight:600;line-height:1.4}
+.civic-shell-admin-sublink:hover,.civic-shell-admin-sublink:focus-visible{background:#234563;color:#fff}
+.civic-shell-admin-sublink.is-active{background:#226eb1;color:#fff}
+@media(hover:none){.civic-shell-admin-subnav{display:grid;gap:3px}}
