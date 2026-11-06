@@ -25,8 +25,6 @@ const municipalSections = [
 const enterpriseSections = [
   ['/collaboration/enterprise/workspace', 'My Workspace', '☑'],
   ['/collaboration/enterprise/tasks', 'Task Management', '✓'],
-  ['/collaboration/enterprise/dashboard', 'Executive Dashboard', '▣'],
-  ['/collaboration/enterprise/employees', 'Employee Directory', '♙'],
   ['/collaboration/enterprise', 'Locations & Facilities', '▦'],
   ['/collaboration/enterprise/assets', 'Assets & Equipment', '◫'],
   ['/collaboration/enterprise/inspections', 'Inspections & Audits', '▤'],
@@ -58,7 +56,7 @@ export default function CollaborationLayout({ children }) {
     path.startsWith('/collaboration/enterprise/');
 
   const sections = isEnterprise
-    ? enterpriseSections.filter(item => ['My Workspace', 'Employee Directory', 'Locations & Facilities', 'Assets & Equipment', 'Inspections & Audits', 'Task Management'].includes(item[1]) || executiveAccess)
+    ? enterpriseSections.filter(item => ['My Workspace', 'Locations & Facilities', 'Assets & Equipment', 'Inspections & Audits', 'Task Management'].includes(item[1]) || executiveAccess)
     : municipalSections;
 
   
@@ -119,7 +117,22 @@ const active = (href) => {
 
         <nav aria-label="Primary navigation">
           {sections.map(([href, label, symbol]) => (
-            <Link
+            isEnterprise && href === '/collaboration/enterprise/admin' ? (
+              <div className="civic-shell-admin-group" key={href}>
+                <Link href={href} className={'civic-shell-nav-link' + (active(href) || ['/collaboration/enterprise/employees', '/collaboration/enterprise/access', '/collaboration/enterprise/dashboard'].some(active) ? ' is-active' : '')} onClick={() => setOpen(false)}>
+                  <span aria-hidden="true">{symbol}</span>{label}<span className="civic-shell-admin-chevron" aria-hidden="true">▾</span>
+                </Link>
+                <div className="civic-shell-admin-subnav" aria-label="Administration sub-navigation">
+                  {[
+                    ['/collaboration/enterprise/employees', 'Employee Directory & Invitations'],
+                    ['/collaboration/enterprise/access', 'Access Management'],
+                    ['/collaboration/enterprise/dashboard', 'Executive Dashboard'],
+                  ].map(([subHref, subLabel]) => (
+                    <Link key={subHref} href={subHref} className={'civic-shell-admin-sublink' + (active(subHref) ? ' is-active' : '')} onClick={() => setOpen(false)}>{subLabel}</Link>
+                  ))}
+                </div>
+              </div>
+            ) : <Link
               key={href}
               href={href}
               className={
@@ -133,6 +146,7 @@ const active = (href) => {
               {label}
             </Link>
           ))}
+          {isEnterprise && !executiveAccess && <Link href="/collaboration/enterprise/employees" className={'civic-shell-nav-link' + (active('/collaboration/enterprise/employees') ? ' is-active' : '')} onClick={() => setOpen(false)}><span aria-hidden="true">♙</span>Employee Directory</Link>}
         </nav>
 
         <div style={{ padding: '12px 16px' }}>
