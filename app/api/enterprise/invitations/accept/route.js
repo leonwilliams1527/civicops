@@ -73,6 +73,27 @@ export async function POST(request) {
       );
     }
 
+    // Preserve the administrator-supplied employee name and job title.
+    // Membership is granted only by the validated database RPC above.
+    const invitation = await adminClient.from('enterprise_invitations')
+      .select('display_name,job_title')
+      .eq('token_hash', hash)
+      .eq('status', 'accepted')
+      .maybeSingle();
+    if (invitation.error || !invitation.data) {
+      return failure('Membership activated, but employee profile could not be verified. Contact your administrator.', 500);
+    }
+    const profile = await adminClient.from('enterprise_employee_profiles').upsert({
+      user_id: data.user.id,
+      display_name: invitation.data.display_name,
+      job_title: invitation.data.job_title || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+    if (profile.error) {
+      console.error('[Enterprise Invitations] Profile sync failed:', profile.error.code);
+      return failure('Membership activated, but employee profile could not be saved. Contact your administrator.', 500);
+    }
+
     return NextResponse.json({
       success: true,
       organization_id: result.data,
