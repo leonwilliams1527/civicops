@@ -59,6 +59,7 @@ export default function Activate() {
   const [ready, setReady] = useState(false);
   const [authorized, setAuthorized] = useState(false);
   const [flow, setFlow] = useState('recovery');
+  const [existingAccount, setExistingAccount] = useState(false);
 
   const [invitationToken, setInvitationToken] =
     useState('');
@@ -97,6 +98,7 @@ export default function Activate() {
 
         if (mounted) {
           setFlow(currentFlow);
+          setExistingAccount(currentFlow === 'invite' && params.get('type') === 'magiclink');
         }
 
         const suppliedToken =
@@ -302,7 +304,7 @@ export default function Activate() {
     // 1. Validate password
     // -------------------------------------------
 
-    if (password.length < 12) {
+    if (!existingAccount && password.length < 12) {
       setError(
         'Your password must contain ' +
         'at least 12 characters.'
@@ -310,7 +312,7 @@ export default function Activate() {
       return;
     }
 
-    if (password !== confirm) {
+    if (!existingAccount && password !== confirm) {
       setError(
         'The passwords do not match.'
       );
@@ -349,14 +351,9 @@ export default function Activate() {
       // 3. Update password
       // -----------------------------------------
 
-      const {
-        error: passwordError
-      } = await db.auth.updateUser({
-        password
-      });
-
-      if (passwordError) {
-        throw passwordError;
+      if (!existingAccount) {
+        const { error: passwordError } = await db.auth.updateUser({ password });
+        if (passwordError) throw passwordError;
       }
 
       // -----------------------------------------
@@ -533,16 +530,16 @@ export default function Activate() {
           <>
             <p>
               {flow === 'invite'
-                ? 'Create a secure password to ' +
-                  'finish activating your invited ' +
-                  'employee account.'
+                ? existingAccount
+                  ? 'Your existing account has been verified. Accept the invitation to join this Enterprise organization without changing your password.'
+                  : 'Create a secure password to finish activating your invited employee account.'
                 : 'Create a new password to ' +
                   'recover access to your account.'}
             </p>
 
             <form onSubmit={savePassword}>
 
-              <label>
+              {!existingAccount && <><label>
                 New password
 
                 <input
@@ -576,6 +573,8 @@ export default function Activate() {
                 />
               </label>
 
+              </>}
+
               <button
                 type="submit"
                 disabled={busy}
@@ -583,7 +582,7 @@ export default function Activate() {
                 {busy
                   ? 'Saving…'
                   : flow === 'invite'
-                    ? 'Activate account'
+                    ? existingAccount ? 'Accept organization invitation' : 'Activate account'
                     : 'Save password'}
               </button>
 
